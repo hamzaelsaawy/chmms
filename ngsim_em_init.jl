@@ -19,8 +19,8 @@ mutable struct HMM
     π0::Vector{Float64}
     bΔ::Matrix{Float64}
     c::Matrix{Float64}
-    μs::Array{Float64}
-    Σs::Array{Float64}
+    μs::Array{Float64, 3}
+    Σs::Array{Float64, 4}
 end
 
 function HMM(YΓ::AbstractArray{Float64}, K::Int, M::Int, L::Int, NΓ::Int, NΔ::Int)
@@ -78,15 +78,15 @@ mutable struct HMM_Data
     log_π0::Vector{Float64}
     log_bΔ::Matrix{Float64}
     log_c::Matrix{Float64}
-    invΣs::Array{Float64}
-    logdetΣs::Array{Float64}
+    invΣs::Array{Float64, 4}
+    logdetΣs::Array{Float64, 2}
 
-    log_α::Array{Float64}
-    log_β::Array{Float64}
-    log_b::Array{Float64}
-    γ::Array{Float64}
-    γ_mix::Array{Float64}
-    ξ::Array{Float64}
+    log_α::Array{Float64, 2}
+    log_β::Array{Float64, 2}
+    log_b::Array{Float64, 2}
+    γ::Array{Float64, 2}
+    γ_mix::Array{Float64, 3}
+    ξ::Array{Float64, 3}
 end
 
 function HMM_Data(hmm::HMM, S::SparseTrajData,
