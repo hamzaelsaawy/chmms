@@ -2,7 +2,7 @@
 # EM training procedure
 #
 
-@inline function logmvnormal(hmm::HMM, hmm_data::HMM_Data,
+@inline function log_bΓ(hmm::HMM, hmm_data::HMM_Data,
         m::Int, k::Int, t::Int)
     o::Float64 = 0.0
     lpdf::Float64 = 0.0
@@ -25,9 +25,9 @@ end
     # log_b[t, i] =  p(Yₜ = yₜ | Xₜ = i) = p(YΓₜ = yₜ | Xₜ = i) * p(YΔₜ = yₜ | Xₜ = i)
     lgmm = AF64(M) # log of sum of GMM pdf
 
-    @time @inbounds for t = 1:T
+    @inbounds for t = 1:T
         for k in 1:K # per state
-            lgmm = hmm.c[:, k]
+            lgmm[:] = hmm.c[:, k]
             for m in 1:M # per mixture
                 lgmm[m] += logmvnormal(hmm, hmm_data, m, k, t)
             end

@@ -89,14 +89,17 @@ end
 
 
 """
-    traj_flat(td::SparseTrajData, fs...)
+    traj_flat(td::SparseTrajData, T, fs...)
 
 Return a matrix `D[i, t] = fs[i](S.nzval[t])`
 """
-function traj_flat(S::SparseTrajData, fs...)
-    Y = AF64(length(fs), nnz(S))
+function traj_flat(S::SparseTrajData, fs::Vector{Function}, T=1_000_000,)
+    T = min(5000, nnz(S))
+    Y = AF64(length(fs), T)
 
-    for (t, s) in S.nzval |> enumerate
+    for t in 1:T
+        s = S.nzval[t]
+
         for (i, f) in fs |> enumerate
             @inbounds Y[i, t] = f(s)
         end

@@ -24,9 +24,6 @@ mutable struct HMM
 end
 
 function HMM(YΓ::AbstractArray{Float64}, K::Int, M::Int, L::Int, NΓ::Int, NΔ::Int)
-    K = 5 # number states
-    M = 3 # number gaussian mixtures per state
-
     # dimension of obs
     N = NΓ + NΔ
 
@@ -139,8 +136,8 @@ function HMM_Data(hmm::HMM, S::SparseTrajData,
 end
 
 function init_em_problem(S::SparseTrajData, fs::AbstractArray{Function},
-        K::Int=5, M::Int=3, L::Int=7)
-    Y = traj_flat(S, fs...)
+        K::Int=5, M::Int=3, L::Int=7, T=10_000)
+    Y = traj_flat(S, fs, T)
 
     # the continuous data
     YΓ = view(Y, 1:2, :)
@@ -150,7 +147,7 @@ function init_em_problem(S::SparseTrajData, fs::AbstractArray{Function},
     NΔ = size(YΔ, 1)
 
     hmm = HMM(YΓ, K, M, L, NΓ, NΔ)
-    hmm_data = HMM_Data(hmm, S, YΓ, YΔ, 5_000)
+    hmm_data = HMM_Data(hmm, S, YΓ, YΔ, T)
 
     return hmm, hmm_data
 end
