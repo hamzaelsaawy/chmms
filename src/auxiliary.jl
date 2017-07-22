@@ -5,6 +5,10 @@
 # makes the code cleaner and nicer
 const AF64 = Array{Float64}
 
+ϵ = eps(0.0)
+ϵI = UniformScaling(1e-6)
+log_ϵ = -100_000 # just to be really sure ...
+
 log2π = float(Distributions.log2π)
 
 # taken from github.com/jwmi/HMM
