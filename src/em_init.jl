@@ -67,7 +67,7 @@ mutable struct HMM_Data
     T::Int
     E::Int
 
-    S::SparseTrajData
+    S::SparseMatrixCSC
     YΓ::AbstractArray{Float64}
     YΔ::AbstractArray{Int}
 
@@ -87,12 +87,7 @@ mutable struct HMM_Data
 end
 
 function HMM_Data(hmm::HMM, S::SparseTrajData,
-        YΓ::AbstractArray{Float64}, YΔ::AbstractArray{Int}, T::Int=0)
-    # number of obs
-    if T == 0
-        T = size(Y, 2)
-    end
-
+        YΓ::AbstractArray{Float64}, YΔ::AbstractArray{Int}, T::Int)
     # number of trajectories
     E = S.m
 
@@ -135,8 +130,9 @@ function HMM_Data(hmm::HMM, S::SparseTrajData,
         log_α, log_β, log_b, γ, γ_mix, ξ)
 end
 
-function init_em_problem(S::SparseTrajData, fs::AbstractArray{Function},
+function init_em_problem(S::SparseMatrixCSC, fs::AbstractArray{Function},
         K::Int=5, M::Int=3, L::Int=7, T=10_000)
+    T = min(T, nnz(S))
     Y = traj_flat(S, fs, T)
 
     # the continuous data
