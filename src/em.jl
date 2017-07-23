@@ -143,6 +143,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     # π0
     #
     fill!(hmm.π0, 0)
+
     @inbounds for e = 1:E # per trajectory
         # where the e-th trajectory starts in the data
         start_idx = hmm_data.S.colptr[e]
@@ -160,6 +161,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     #
     fill!(hmm.A, 0)
     temp = zeros(K)
+
     @inbounds for e = 1:E
         start_idx = hmm.S.colptr[e]
         end_idx = min(S.colptr[e+1] - 1, T) - 1
@@ -179,6 +181,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     # bΔ
     #
     fill!(hmm.bΔ, 0.0)
+
     @inbounds for t in 1:T
         hmm.bΔ[hmm_data.YΔ[t], :] .+= hmm_data.γ[:, t]
     end
@@ -222,16 +225,16 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
 
     @inbounds for k in 1:K
         for m in 1:M
-            μs[:, m, k] ./= γ_mix_sum[m, k]
-            Σs[:, :, m, k] ./= γ_mix_sum[m, k]
-            Σs[:, :, m, k] += ϵI
+            hmm.μs[:, m, k] ./= γ_mix_sum[m, k]
+            hmm.Σs[:, :, m, k] ./= γ_mix_sum[m, k]
+            hmm.Σs[:, :, m, k] += ϵI
         end
     end
 
     @inbounds for k in 1:K
         for m in 1:M
-            hmm_data.invΣs[:, :, m, k] = inv(Σs[:, :, m, k])
-            hmm_data.logdetΣs[m, k] = logdet(Σs[:, :, m, k])
+            hmm_data.invΣs[:, :, m, k] = inv(hmm.Σs[:, :, m, k])
+            hmm_data.logdetΣs[m, k] = logdet(hmm.Σs[:, :, m, k])
         end
     end
 end
