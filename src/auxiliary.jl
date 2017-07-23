@@ -12,13 +12,13 @@ const ϵI = UniformScaling(1e-6)
 
 const log2π = float(Distributions.log2π)
 
-@inline function sanitize_log!(A::Array{<:Real}, log_ϵ::Float64=log_ϵ)
+@inline function sanitize_log!(A::AbstractArray{<:Real}, log_ϵ::Float64=log_ϵ)
     @inbounds for i in 1:length(A)
         !isfinite(A[i]) && (A[i] = log_ϵ)
     end
 end
 
-@inline function sanitize!(A::Array{<:Real}, ϵ::Float64=ϵ)
+@inline function sanitize!(A::AbstractArray{<:Real}, ϵ::Float64=ϵ)
     @inbounds for i in 1:length(A)
         (!isfinite(A[i]) || A[i] ≤ ϵ) && (A[i] = ϵ)
     end

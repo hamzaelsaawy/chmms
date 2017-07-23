@@ -62,8 +62,9 @@ end
 mutable struct HMM_Data
     T::Int
     E::Int
+    E_max::Int
 
-    S::SparseMatrixCSC
+    S::SparseTrajData
     YΓ::Array{Float64, 2}
     YΔ::Array{Int, 2}
 
@@ -86,6 +87,8 @@ function HMM_Data(hmm::HMM, S::SparseTrajData,
         YΓ::AbstractArray{Float64}, YΔ::AbstractArray{Int}, T::Int)
     # number of trajectories
     E = S.n
+    # find the last trajectory that starts before T
+    E_max = findfirst(v -> v ≥ T, S.colptr) - 1
 
     M = hmm.M
     K = hmm.K
@@ -125,7 +128,7 @@ function HMM_Data(hmm::HMM, S::SparseTrajData,
     # P(xₜ = j, xₙ₋₁ = i | Y, θ)
     ξ = AF64(K, K, T)
 
-    return HMM_Data(T, E, S, YΓ, YΔ,
+    return HMM_Data(T, E, E_max, S, YΓ, YΔ,
         log_A, log_π0, log_bΔ, log_c, invΣs, logdetΣs,
         log_α, log_β, log_b, γ, γ_mix, ξ)
 end
