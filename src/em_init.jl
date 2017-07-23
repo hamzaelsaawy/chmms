@@ -27,16 +27,12 @@ function HMM(YΓ::AbstractArray{Float64}, K::Int, M::Int, L::Int, NΓ::Int, NΔ:
     # dimension of obs
     N = NΓ + NΔ
 
-    # number of discrete observation states
-    # should only be 6 lanes in the data (but just in case)
-    L = 7
-
     #
     # transition parameters
     #
 
     # transition matrix; logs to avoid numberical underflow
-    # dirichlet returns distributions as the columns
+    # Dirichlet returns distributions as the columns
     A = rand(Dirichlet(K, 1), K)
 
     # initial
@@ -50,15 +46,15 @@ function HMM(YΓ::AbstractArray{Float64}, K::Int, M::Int, L::Int, NΓ::Int, NΔ:
     # only for NΔ = 1; should be [rand(...)' for _ in 1:MΔ]
     bΔ = rand(Dirichlet(L, 1), K)
 
-    # mixuter parameters for each MV per state
-    # c[m, k] is weight of m-th gaussian in for k-th state
+    # mixture parameters for each MV per state
+    # c[m, k] is weight of m-th Gaussian in for k-th state
     c = rand(Dirichlet(M, 1), K)
 
     # μs[:, m, k] is the mean of m-th mixture of the k-th state
     μs = randn(NΓ, M, K) .+ squeeze(mean(YΓ, 2), 2)
 
     # Σs[:, :, m, k] is the covariance of m-th mixture of the k-th state
-    Σs = repeat(cov(YΓ, 2), outer=(1, 1, M, K))
+    Σs = repeat(cov(YΓ, 2) + ϵI, outer=(1, 1, M, K))
 
     return HMM(K, M, L, N, NΓ, NΔ, A, π0, bΔ, c, μs, Σs)
 end
@@ -68,8 +64,8 @@ mutable struct HMM_Data
     E::Int
 
     S::SparseMatrixCSC
-    YΓ::AbstractArray{Float64}
-    YΔ::AbstractArray{Int}
+    YΓ::Array{Float64, 2}
+    YΔ::Array{Int, 2}
 
     log_A::Matrix{Float64}
     log_π0::Vector{Float64}
@@ -89,7 +85,7 @@ end
 function HMM_Data(hmm::HMM, S::SparseTrajData,
         YΓ::AbstractArray{Float64}, YΔ::AbstractArray{Int}, T::Int)
     # number of trajectories
-    E = S.m
+    E = S.n
 
     M = hmm.M
     K = hmm.K
@@ -99,29 +95,33 @@ function HMM_Data(hmm::HMM, S::SparseTrajData,
     log_bΔ = log.(hmm.bΔ)
     log_c = log.(hmm.c)
 
+    sanitize_log!(log_A)
+    sanitize_log!(log_π0)
+    sanitize_log!(log_bΔ)
+    sanitize_log!(log_c)
+
     invΣs = similar(hmm.Σs)
     logdetΣs = similar(hmm.Σs, M, K)
-
-
-    @simd for m in 1:M
+    @inbounds for m in 1:M
         for k in 1:K
             invΣs[:, :, m, k] = inv(hmm.Σs[:, :, m, k])
             logdetΣs[m, k] = logdet(hmm.Σs[:, :, m, k])
         end
     end
 
+    # log P(yₜ | xₜ, θ)
+    log_b = AF64(K, T)
+
     # log P(y₁, ..., yₜ, xₜ | θ)
     log_α = AF64(K, T)
     # log P(yₜ₊₁, ..., y_T | xₜ =i, θ)
     log_β = AF64(K, T)
 
-    # log P(yₜ | xₜ, θ)
-    log_b = similar(log_α)
-
     # P(xₜ = j | Y, θ)
     γ = AF64(K, T)
     # P(Xₜ = j, Zⱼₜ = m| Y, θ) = prob of state j, and m-th mixture at t
     γ_mix = AF64(M, K, T)
+
     # P(xₜ = j, xₙ₋₁ = i | Y, θ)
     ξ = AF64(K, K, T)
 
@@ -130,16 +130,18 @@ function HMM_Data(hmm::HMM, S::SparseTrajData,
         log_α, log_β, log_b, γ, γ_mix, ξ)
 end
 
-function init_em_problem(S::SparseMatrixCSC, fs::AbstractArray{Function},
-        K::Int=5, M::Int=3, L::Int=7, T=10_000)
+function init_em_problem(S::SparseMatrixCSC, fs::AbstractArray{Function};
+        K::Int=5, M::Int=3, L::Int=7, T::Int=10_000)
     T = min(T, nnz(S))
     Y = traj_flat(S, fs, T)
 
     # the continuous data
-    YΓ = view(Y, 1:2, :)
+    YΓ = Y[1:2, :]
+    NΓ = size(YΓ, 1)
+
     # the discrete data (Int to use as indexing)
     YΔ = round.(Int, Y[3, :])
-    NΓ = size(YΓ, 1)
+    YΔ = reshape(YΔ, length(YΔ), 1) # make a Matrix
     NΔ = size(YΔ, 1)
 
     hmm = HMM(YΓ, K, M, L, NΓ, NΔ)

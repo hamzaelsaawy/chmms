@@ -4,7 +4,7 @@
 
 @inline function log_bΓ(hmm::HMM, hmm_data::HMM_Data,
         m::Int, k::Int, t::Int)
-    o::Float64 = 0.0
+    o = AF64(hmm.NΓ)
     lpdf::Float64 = 0.0
 
     # shamelessly stolen from Distributions.jl/src/multivariate/mvnormal.jl
@@ -16,154 +16,206 @@
 end
 
 @inline function data_likelihood!(hmm::HMM, hmm_data::HMM_Data)
-    T = hmm_data.T
     M = hmm.M
     K = hmm.K
-
-    log_b = hmm_data.log_b
+    T = hmm_data.T
 
     # log_b[t, i] =  p(Yₜ = yₜ | Xₜ = i) = p(YΓₜ = yₜ | Xₜ = i) * p(YΔₜ = yₜ | Xₜ = i)
     lgmm = AF64(M) # log of sum of GMM pdf
 
     @inbounds for t = 1:T
-        for k in 1:K # per state
-            lgmm[:] = hmm.c[:, k]
+        for k in 1:K
+            lgmm[:] = hmm_data.log_c[:, k]
+
             for m in 1:M # per mixture
-                lgmm[m] += logmvnormal(hmm, hmm_data, m, k, t)
+                lgmm[m] += log_bΓ(hmm, hmm_data, m, k, t)
             end
 
-            log_b[k, t] = logsumexp(lgmm)
+            hmm_data.log_b[k, t] = logsumexp(lgmm)
         end
 
-        log_b[:, t] .+= hmm_data.log_bΔ[hmm_data.YΔ[t], :]
+        hmm_data.log_b[:, t] .+= hmm_data.log_bΔ[hmm_data.YΔ[t], :]
     end
+    sanitize_log!(hmm_data.log_b)
 end
 
 @inline function forward_backward_pass!(hmm::HMM, hmm_data::HMM_Data)
-    T = hmm_data.T
     M = hmm.M
     K = hmm.K
+    T = hmm_data.T
 
-    log_A = hmm_data.log_A
-    log_b = hmm_data.log_b
-    log_α = hmm_data.log_α
-    log_β = hmm_data.log_β
-
+    #
     # forward
-
+    #
     # [ log_a[i, t-1] + log_A[j, i] ]ᵢ
     temp = AF64(K)
+    hmm_data.log_α[:, 1] = hmm_data.log_π0 .+ hmm_data.log_b[:, 1]
 
-    log_α[:, 1] = hmm_data.log_π0 .+ log_b[:, 1]
     @inbounds for t in 2:T
         for j in 1:K
-            temp[:] = log_α[:, t-1] + log_A[j, :]
-            log_α[j, t] = logsumexp(temp) + log_b[j, t]
+            temp[:] = hmm_data.log_α[:, t-1]
+            temp .+= hmm_data.log_A[j, :]
+            hmm_data.log_α[j, t] = logsumexp(temp) + hmm_data.log_b[j, t]
         end
     end
 
+    #
     # backward pass
+    #
     # temp is [ log_A[i, j] + log_β[j, t+1] + log_b[j, t+1] ]ⱼ
+    hmm_data.log_β[:, T] = 0
 
-    log_β[:, T] = 0
     @inbounds for t = (T-1):-1:1
         for i in 1:K
-            temp[:] = log_A[i, :] + log_b[:, t+1] + log_β[:, t+1]
-            log_β[i, t] = logsumexp(temp)
+            temp[:] = hmm_data.log_A[:, i]
+            temp .+= hmm_data.log_b[:, t+1]
+            temp .+= hmm_data.log_β[:, t+1]
+            hmm_data.log_β[i, t] = logsumexp(temp)
         end
     end
 end
 
 function state_probs!(hmm::HMM, hmm_data::HMM_Data)
-    T = hmm_data.T
     M = hmm.M
     K = hmm.K
+    T = hmm_data.T
 
-    log_α = hmm_data.log_α
-    log_β = hmm_data.log_β
-    γ = hmm_data.γ
-    γ_mix = hmm_data.γ_mix
-    ξ = hmm_data.ξ
-
-    log_A = hmm_data.log_A
-    log_b = hmm_data.log_b
-    log_c = hmm_data.log_c
-
+    #
+    # γ
+    #
     @inbounds for t in 1:T
-        γ[:, t] = log_α[:, t] .+ log_β[:, t]
-        γ[:, t] -= logsumexp(γ[:, t])
+        hmm_data.γ[:, t] = hmm_data.log_α[:, t]
+        hmm_data.γ[:, t] .+= hmm_data.log_β[:, t]
+        hmm_data.γ[:, t] .-= logsumexp(hmm_data.γ[:, t])
     end
-    map!(exp, γ, γ)
+    map!(exp, hmm_data.γ, hmm_data.γ)
+    sanitize!(hmm_data.γ)
 
+    #
+    # γ_mix
+    #
     @inbounds for t in 1:T
         # work in logs for a bit
-        γ_mix[:, :, t] = log_c
+        hmm_data.γ_mix[:, :, t] = hmm_data.log_c
+        hmm_data.γ_mix[:, :, t] .+= hmm_data.log.(γ[:, t])'
+        hmm_data.γ_mix[:, :, t] .-= hmm_data.log_b[:, t]'
+        # subtract (divide out) the discrete prob portion
+        # somehow this is sensical and sum(γ_mix, (1,2)) ≈ 1 !!! wut
+        hmm_data.γ_mix[:, :, t] .+= hmm_data.log_bΔ[hmm_data.YΔ[t], :]'
 
         for k in 1:K # per state
-            γ_mix[:, k, t] += log(γ[k, t])
-            γ_mix[:, k, t] -= log_b[k, t]
-
             for m in 1:M # per mixture
-                γ_mix[m, k, t] += logmvnormal(hmm, hmm_data, m, k, t)
+                hmm_data.γ_mix[m, k, t] += log_bΓ(hmm, hmm_data, m, k, t)
             end
         end
-        γ_mix[:, :, t] -= logsumexp(γ_mix[:, :, t])
     end
-    map!(exp, γ_mix, γ_mix)
+    map!(exp, hmm_data.γ_mix, hmm_data.γ_mix)
+    sanitize!(hmm_data.γ_mix)
 
+    #
+    # ξ
+    #
     @inbounds for t = 1:(T-1)
-        ξ[:, :, t] = log_α[:, t]' .+ log_A .+ log_b[:, t+1] .+ log_β[:, t+1]
-        ξ[:, : ,t] -= logsumexp(ξ[:, :, t])
+        hmm_data.ξ[:, :, t] = hmm_data.log_A
+        hmm_data.ξ[:, :, t] .+= hmm_data.log_α[:, t]'
+        hmm_data.ξ[:, :, t] .+= hmm_data.log_b[:, t+1]
+        hmm_data.ξ[:, :, t] .+= hmm_data.log_β[:, t+1]
+        hmm_data.ξ[:, : ,t] .-= logsumexp(hmm_data.ξ[:, :, t])
     end
-    map!(exp, ξ, ξ)
+    map!(exp, hmm_data.ξ, hmm_data.ξ)
+    sanitize!(hmm_data.ξ)
 
     return
 end
-
-#
-# model params estimation (considering mult traj's)
-#
 
 function update_params!(hmm::HMM, hmm_data::HMM_Data)
     T = hmm_data.T
     M = hmm.M
     K = hmm.K
+    NΓ = hmm.NΓ
     E = hmm_data.E
 
-    π0 = hmm.π0
-    c = hmm.c
-    μs = hmm.μs
-    Σs = hmm.Σs
+    γ_mix_sum = squeeze(sum(hmm_data.γ_mix, 3), 3)
+    # *should* be equal to sum(γ_mix_sum, 2) ...
+    γ_sum = squeeze(sum(hmm_data.γ, 2), 2)
 
-    YΓ = hmm_data.YΓ
-    γ = hmm_data.γ
-    γ_mix = hmm_data.γ_mix
-
-    fill!(π0, 0)
-    for e = 1:E # per trajectory
+    #
+    # π0
+    #
+    fill!(hmm.π0, 0)
+    @inbounds for e = 1:E # per trajectory
         # where the e-th trajectory starts in the data
-        start_idx = S.colptr[e]
+        start_idx = hmm_data.S.colptr[e]
 
-        (start_idx ≥ T) && break
+        (start_idx > T) && break
 
-        π0 += γ[:, start_idx]
+        hmm.π0 .+= hmm_data.γ[:, start_idx]
     end
+    sanitize!(hmm.π0)
+    normalize!(hmm.π0, 1)
+    map!(log, hmm_data.log_π0, hmm.π0)
 
-    normalize!(π0, 1)
-    map!(log, hmm_data.log_π0, π0)
+    #
+    # A
+    #
+    fill!(hmm.A, 0)
+    temp = zeros(K)
+    @inbounds for e = 1:E
+        start_idx = hmm.S.colptr[e]
+        end_idx = min(S.colptr[e+1] - 1, T) - 1
 
-    γ_mix_sum = squeeze(sum(γ_mix, 3), 3)
-    c[:] = γ_mix_sum ./ sum(γ, 2)'
-    c ./= sum(c, 1)
-    map!(log, hmm_data.log_c, c)
+        (start_idx ≥ T && break)
 
-    fill!(μs, 0)
+        for t in start_idx:end_idx
+            hmm.A .+= hmm_data.ξ[:, :, t]
+            temp .+= hmm_data.γ[:, t]
+        end
+    end
+    hmm.A ./= temp'
+    sanitize!(hmm.A)
+    map!(log, hmm_data.log_A, hmm.A)
+
+    #
+    # bΔ
+    #
+    fill!(hmm.bΔ, 0.0)
+    @inbounds for t in 1:T
+        hmm.bΔ[hmm_data.YΔ[t], :] .+= hmm_data.γ[:, t]
+    end
+    hmm.bΔ ./= γ_sum'
+    sanitize!(hmm.bΔ)
+    map!(log, hmm_data.log_bΔ, hmm.bΔ)
+
+    #
+    # c
+    #
+    hmm.c[:] = γ_mix_sum ./ γ_sum'
+    sanitize!(hmm.c)
+    map!(log, hmm_data.log_c, hmm.c)
+
+
+    #
+    # μs & Σs
+    #
+    o = AF64(2)
+    tt = zeros(NΓ)
+    ttt = zeros(NΓ, NΓ)
+    fill!(hmm.μs, 0)
+    fill!(hmm.Σs, 0)
+
     @inbounds for t = 1:T
-        o = YΓ[:, t]
+        o[:] = hmm_data.YΓ[:, t]
 
         for k in 1:K
             for m in 1:M
-                μs[:, m, k] += γ_mix[m, k, t] * o
+                tt[:] = hmm_data.γ_mix[m, k, t]
+                tt .*= o
+                hmm.μs[:, m, k] += tt
+
+                ttt[:] = hmm_data.γ_mix[m, k, t]
+                ttt .*= o
+                ttt .*= o'
+                hmm.Σs[:, :, m, k] += ttt
             end
         end
     end
@@ -171,28 +223,13 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     @inbounds for k in 1:K
         for m in 1:M
             μs[:, m, k] ./= γ_mix_sum[m, k]
-        end
-    end
-
-    fill!(Σs, 0)
-    @inbounds for t = 1:T
-        o = YΓ[:, t]
-
-        for k in 1:K
-            for m in 1:M
-                Σs[:, :, m, k] += γ_mix[m, k, t] * o * o'
-            end
+            Σs[:, :, m, k] ./= γ_mix_sum[m, k]
+            Σs[:, :, m, k] += ϵI
         end
     end
 
     @inbounds for k in 1:K
         for m in 1:M
-            Σs[:, :, m, k] ./= γ_mix_sum[m, k]
-        end
-    end
-
-    @inbounds for m in 1:M
-        for k in 1:K
             hmm_data.invΣs[:, :, m, k] = inv(Σs[:, :, m, k])
             hmm_data.logdetΣs[m, k] = logdet(Σs[:, :, m, k])
         end

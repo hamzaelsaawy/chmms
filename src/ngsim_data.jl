@@ -93,14 +93,15 @@ end
 
 Return a matrix `D[i, t] = fs[i](S.nzval[t])`
 """
-@inline function traj_flat(S::SparseTrajData, fs::Vector{Function}, T=1_000_000, )
-    T > nnz(S) && error("T > nnz(S)")
+@inline function traj_flat(S::SparseTrajData, fs::Vector{Function}, T::Int=10_000, )
+    (T > nnz(S)) && error("T > nnz(S)")
+    fs_enum = enumerate(fs)
     Y = AF64(length(fs), T)
 
     @inbounds for t in 1:T
         s = S.nzval[t]
 
-        for (i, f) in fs |> enumerate
+        for (i, f) in fs_enum
             Y[i, t] = f(s)
         end
     end
