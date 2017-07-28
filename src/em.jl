@@ -23,7 +23,7 @@ end
     # log_b[t, i] =  p(Yₜ = yₜ | Xₜ = i) = p(YΓₜ = yₜ | Xₜ = i) * p(YΔₜ = yₜ | Xₜ = i)
     lgmm = AF64(M) # log of sum of GMM pdf
 
-    @inbounds for t in 1:T
+     for t in 1:T
         for k in 1:K
             lgmm[:] = hmm_data.log_c[:, k]
 
@@ -51,7 +51,7 @@ end
     temp = AF64(K)
     hmm_data.log_α[:, 1] = hmm_data.log_π0 .+ hmm_data.log_b[:, 1]
 
-    @inbounds for t in 2:T
+     for t in 2:T
         for j in 1:K
             temp[:] = hmm_data.log_α[:, t-1]
             temp .+= hmm_data.log_A[j, :]
@@ -65,7 +65,7 @@ end
     # temp is [ log_A[i, j] + log_β[j, t+1] + log_b[j, t+1] ]ⱼ
     hmm_data.log_β[:, T] = 0
 
-    @inbounds for t in (T-1):-1:1
+     for t in (T-1):-1:1
         for i in 1:K
             temp[:] = hmm_data.log_A[:, i]
             temp .+= hmm_data.log_b[:, t+1]
@@ -83,7 +83,7 @@ function state_probs!(hmm::HMM, hmm_data::HMM_Data)
     #
     # γ
     #
-    @inbounds for t in 1:T
+     for t in 1:T
         hmm_data.γ[:, t] = hmm_data.log_α[:, t]
         hmm_data.γ[:, t] .+= hmm_data.log_β[:, t]
         hmm_data.γ[:, t] .-= logsumexp(hmm_data.γ[:, t])
@@ -94,7 +94,7 @@ function state_probs!(hmm::HMM, hmm_data::HMM_Data)
     #
     # γ_mix
     #
-    @inbounds for t in 1:T
+     for t in 1:T
         # work in logs for a bit
         hmm_data.γ_mix[:, :, t] = hmm_data.log_c
         hmm_data.γ_mix[:, :, t] .+= log.(hmm_data.γ[:, t])'
@@ -115,7 +115,7 @@ function state_probs!(hmm::HMM, hmm_data::HMM_Data)
     #
     # ξ
     #
-    @inbounds for t in 1:(T-1)
+     for t in 1:(T-1)
         hmm_data.ξ[:, :, t] = hmm_data.log_A
         hmm_data.ξ[:, :, t] .+= hmm_data.log_α[:, t]'
         hmm_data.ξ[:, :, t] .+= hmm_data.log_b[:, t+1]
@@ -144,7 +144,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     #
     fill!(hmm.π0, 0)
 
-    @inbounds for e in 1:E_max # per trajectory
+     for e in 1:E_max # per trajectory
         # where the e-th trajectory starts in the data
         start_idx = hmm_data.S.colptr[e]
 
@@ -160,7 +160,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     fill!(hmm.A, 0)
     temp = zeros(K)
 
-    @inbounds for e in 1:E_max
+     for e in 1:E_max
         e_range = nzrange(hmm_data.S, e)
 
         for t in e_range
@@ -177,7 +177,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     #
     fill!(hmm.bΔ, 0.0)
 
-    @inbounds for t in 1:T
+     for t in 1:T
         hmm.bΔ[hmm_data.YΔ[t], :] .+= hmm_data.γ[:, t]
     end
     hmm.bΔ ./= γ_sum'
@@ -200,7 +200,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
     fill!(hmm.μs, 0)
     fill!(hmm.Σs, 0)
 
-    @inbounds for t in 1:T
+     for t in 1:T
         o[:] = hmm_data.YΓ[:, t]
 
         for k in 1:K
@@ -217,7 +217,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
         end
     end
 
-    @inbounds for k in 1:K
+     for k in 1:K
         for m in 1:M
             hmm.μs[:, m, k] ./= γ_mix_sum[m, k]
             hmm.Σs[:, :, m, k] ./= γ_mix_sum[m, k]
@@ -225,7 +225,7 @@ function update_params!(hmm::HMM, hmm_data::HMM_Data)
         end
     end
 
-    @inbounds for k in 1:K
+     for k in 1:K
         for m in 1:M
             hmm_data.invΣs[:, :, m, k] = inv(hmm.Σs[:, :, m, k])
             hmm_data.logdetΣs[m, k] = logdet(hmm.Σs[:, :, m, k])
@@ -246,7 +246,7 @@ function run_em!(hmm::HMM, hmm_data::HMM_Data;
         iters::Int=50, tol::Float64=1e-5, verbose::Bool=false)
     old_A = copy(hmm.A)
 
-    for i in 1:NUM_ITERS
+    for i in 1:iters
         verbose && print(i, " ")
         em_iter!(hmm, hmm_data)
 

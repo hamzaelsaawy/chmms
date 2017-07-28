@@ -12,4 +12,5 @@ include("ngsim_data.jl")
 include("ngsim_pairs.jl")
 include("em_init.jl")
 include("em.jl")
+include("simil.jl")
 
