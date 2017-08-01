@@ -9,8 +9,7 @@ import Base: @propagate_inbounds
 
 include("auxiliary.jl")
 include("ngsim_data.jl")
-include("ngsim_pairs.jl")
-include("em_init.jl")
-include("em.jl")
-include("simil.jl")
+#include("em_init.jl")
+#include("em.jl")
+#include("similarity.jl")
 
