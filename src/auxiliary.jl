@@ -41,3 +41,18 @@ log Σᵢ exp(xᵢ) for a sequence where xᵢ = log yᵢ
     end
 end
 
+@inline function avg_sum(x::Vector{<:Real})
+    K = Int(sqrt(length(x)))
+    r = reshape(x, K, K)
+    y = zeros(K)
+
+    for i in 1:K
+        for j in 1:K
+            y[i] += r[i, j]
+            y[j] += r[i, j]
+        end
+    end
+
+    return y./2
+end
+
