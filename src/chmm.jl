@@ -3,6 +3,7 @@
 #
 
 import StatsBase: wsample
+import Clustering: kmeans
 
 struct Chmm
     K::Int # number states
@@ -12,6 +13,23 @@ struct Chmm
     P::Array{Float64, 3}
     μs::Vector{Vector{Float64}}
     Σs::Vector{Matrix{Float64}}
+end
+
+# initial EM estimates
+# X is D×T, where D is data dimension
+function chmm_from_data(X, K::Int)
+    D = size(X, 1)
+
+    R = kmeans(X, K, maxiter=50, display=:none)
+    ms = [R.centers[:, i] for i in 1:K]
+    Ss = [eye(D) for _ in 1:K]
+
+    p0 = normalize(rand(K), 1)
+
+    P = rand(K, K, K)
+    P ./= sum(P, 1)
+
+    return Chmm(K, D, p0, P, ms, Ss)
 end
 
 # make the μ and Σ generation more sophisticated?

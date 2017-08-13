@@ -71,7 +71,7 @@ Return the counts of states in [1, K] for observations in [1, K²]
 end
 
 """
-    get_outer(A)
+    estimate_outer(A)
 
 Find the vector `v` that best approximates `A` with `v*v'`
 `A` should be symmetric
