@@ -2,6 +2,8 @@
 # CHMM generation and stuff...
 #
 
+import StatsBase: wsample
+
 function rand_chmm(K, D)
     π0 = rand(K)
     π0 ./= sum(π0)
@@ -30,7 +32,10 @@ function simulate_model(model, T)
     z = wsample(1:K, model[:π0], 2)
 
     for t in 1:T
-        z = wsample(1:K, model[:P][:, z...], 2)
+        z1 = wsample(1:K, model[:P][:, z...])
+        z2 = wsample(1:K, model[:P][:, reverse(z)...])
+        z = [z1, z2]
+
         Z[:, t] = z
         X1[:, t] = sqrtm_Σs[z[1]] * randn(D) + model[:μs][z[1]]
         X2[:, t] = sqrtm_Σs[z[2]] * randn(D) + model[:μs][z[2]]
