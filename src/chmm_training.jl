@@ -48,9 +48,14 @@ function zero!(suff::ChmmSuffStats)
     return suff
 end
 
-function data_likelihood!(::Type{PairwiseTrajectory},
-        curr::Chmm, X1::AbstractMatrix{<:Real}, X2::AbstractMatrix{<:Real},
-        log_p0::Vector{Float64}, log_P::Matrix{Float64}, log_b::Matrix{Float64})
+function data_likelihood!(
+        ::Type{PairwiseTrajectory},
+        curr::Chmm,
+        X1::AbstractMatrix{<:Real},
+        X2::AbstractMatrix{<:Real},
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
+        log_b::Matrix{Float64})
     K = curr.K
     T = size(X1, 2)
 
@@ -60,17 +65,22 @@ function data_likelihood!(::Type{PairwiseTrajectory},
     for t in 1:T
         o1 = X1[:, t]
         o2 = X2[:, t]
+
         for i in 1:K
-            l1 = logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o1)
-            l2 = logpdf(MvNormal(curr.μs[j], curr.Σs[j]), o2)
+            l1[i] = logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o1)
+            l2[i] = logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o2)
         end
-        outer!(reshape(view(log_b, :, t), K, K), l1, l2)
+
+        log_b[:, t] = (l1 .+ l2')[:]
     end
 end
 
-function data_likelihood!(::Type{SingleTrajectory},
+function data_likelihood!(
+        ::Type{SingleTrajectory},
         curr::Chmm, X::AbstractMatrix{<:Real},
-        log_p0::Vector{Float64}, log_P::Matrix{Float64}, log_b::Matrix{Float64})
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
+        log_b::Matrix{Float64})
     K = curr.K
     T = size(X, 2)
 
@@ -83,10 +93,15 @@ function data_likelihood!(::Type{SingleTrajectory},
     end
 end
 
-function forward_backward!(curr::Chmm, T::Int,
-        log_p0::Vector{Float64}, log_P::Matrix{Float64},
-        log_b::Matrix{Float64}, log_α::Matrix{Float64},
-        log_β::Matrix{Float64}, γ::Matrix{Float64})
+function forward_backward!(
+        curr::Chmm,
+        T::Int,
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
+        log_b::Matrix{Float64},
+        log_α::Matrix{Float64},
+        log_β::Matrix{Float64},
+        γ::Matrix{Float64})
     K = curr.K
     KK = K^2
     temp = empty(KK)
@@ -127,23 +142,28 @@ function forward_backward!(curr::Chmm, T::Int,
         γ[:, t] = log_α[:, t]
         γ[:, t] .+= log_β[:, t]
         γ[:, t] .-= logsumexp(γ[:, t])
+        γ[:, t] = exp.(γ[:, t])
     end
-    map!(exp, γ, γ)
 
     return logsumexp(log_α[:, T])
 end
 
-function _update_suff_stats!(traj_type::Type{<:TrajectoryType},
-        suff::ChmmSuffStats, T::Int, pairwise::Bool,
-        log_p0::Vector{Float64}, log_P::Matrix{Float64}, γ::Matrix{Float64} )
+function _update_suff_stats!(
+        traj_type::Type{<:TrajectoryType},
+        suff::ChmmSuffStats,
+        T::Int,
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
+        γ::Matrix{Float64})
     K = length(suff.counts_K)
 
     temp_counts = vec(sum(γ[:, 1:T], 2))
     suff.counts_KK .+= temp_counts
 
     # counts_K is used to normalize μ and Σ. pairwise data is "seen" twice per μ/Σ
-    (traj_type == SingleTrajectory) && (temp_counts ./= 2)
-    suff.counts_K .+= single_counts(temp_counts, K)
+    temp_counts_K = single_counts(temp_counts, K)
+    (traj_type == SingleTrajectory) && (temp_counts_K ./= 2)
+    suff.counts_K .+= temp_counts_K
 
     #
     # P
@@ -166,20 +186,24 @@ function _update_suff_stats!(traj_type::Type{<:TrajectoryType},
     return
 end
 
-function update_suff_stats!(::Type{PairwiseTrajectory},
+function update_suff_stats!(
+        ::Type{PairwiseTrajectory},
         suff::ChmmSuffStats,
-        X1::AbstractMatrix{<:Real}, X2::AbstractMatrix{<:Real},
-        log_p0::Vector{Float64}, log_P::Matrix{Float64}, γ::Matrix{Float64} )
+        X1::AbstractMatrix{<:Real},
+        X2::AbstractMatrix{<:Real},
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
+        γ::Matrix{Float64} )
     K = length(suff.counts_K)
     T = size(X1, 2)
 
-    _update_suff_stats!(suff, T, true, log_p0, log_P, γ)
+    _update_suff_stats!(PairwiseTrajectory, suff, T, log_p0, log_P, γ)
 
     #
     # μ & Σ
     #
     for t in 1:T
-        p = reshape(γ[:, t], (K, K))
+        p = reshape(γ[:, t], (K, K)) .+ ϵ
         o1 = X1[:, t]
         o2 = X2[:, t]
 
@@ -196,19 +220,23 @@ function update_suff_stats!(::Type{PairwiseTrajectory},
     end
 end
 
-function update_suff_stats!(::Type{SingleTrajectory},
-        suff::ChmmSuffStats, X::AbstractMatrix{<:Real},
-        log_p0::Vector{Float64}, log_P::Matrix{Float64}, γ::Matrix{Float64} )
+function update_suff_stats!(
+        ::Type{SingleTrajectory},
+        suff::ChmmSuffStats,
+        X::AbstractMatrix{<:Real},
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
+        γ::Matrix{Float64} )
     K = length(suff.counts_K)
-    T = size(X1, 2)
+    T = size(X, 2)
 
-    _update_suff_stats!(suff, T, false, log_p0, log_P, γ)
+    _update_suff_stats!(SingleTrajectory, suff, T, log_p0, log_P, γ)
 
     #
     # μ & Σ
     #
     for t in 1:T
-        p = reshape(γ[:, t], (K, K))
+        p = reshape(γ[:, t], (K, K)) .+ ϵ
         o = X[:, t]
 
         for k in 1:K
@@ -221,7 +249,10 @@ function update_suff_stats!(::Type{SingleTrajectory},
 end
 
 # ϵ is added to values before normalizing to stop divide by zeros
-function update_parameter_estimates!(curr::Chmm, suff::ChmmSuffStats, ϵ::Float64=eps(1.0))
+function update_parameter_estimates!(
+        curr::Chmm,
+        suff::ChmmSuffStats,
+        ϵ::Float64=eps(1.0))
     K = length(suff.counts_K)
     KK = length(suff.counts_KK)
 
@@ -249,6 +280,7 @@ function update_parameter_estimates!(curr::Chmm, suff::ChmmSuffStats, ϵ::Float6
     outer!(reshape(log_p0, K, K), curr.π0)
     map!(log, log_p0, log_p0)
 
+    suff.counts_K .+= ϵ
     for k in 1:K
         curr.μs[k][:] = suff.ms[k] ./ (suff.counts_K[k])
         curr.Σs[k][:] = suff.Ss[k] ./ (suff.counts_K[k])

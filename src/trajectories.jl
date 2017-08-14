@@ -14,6 +14,7 @@ num_obs(T::Trajectories) = size(T.X, 2)
 num_trajs(T::Trajectories) = length(T.traj_ptr) - 1
 num_pairs(T::Trajectories) = length(T.traj_pairs)
 num_singles(T::Trajectories) = length(T.traj_singles)
+traj_lengths(T::Trajectories) = diff(T.traj_ptr)
 
 @inline function get_trajectory(id::Int, T::Trajectories)
     start_traj = T.traj_ptr[id]
