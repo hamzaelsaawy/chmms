@@ -17,13 +17,13 @@ const ϵI = UniformScaling(1e-6)
 
 const log2π = float(Distributions.log2π)
 
-@inline function sanitize_log!(A::AbstractArray{<:Real}, log_ϵ::Float64=log_ϵ)
+@inline function sanitize_log!(A::AbstractArray{<:Real}, log_ϵ::Real=log_ϵ)
     @inbounds for i in 1:length(A)
         !isfinite(A[i]) && (A[i] = log_ϵ)
     end
 end
 
-@inline function sanitize!(A::AbstractArray{<:Real}, ϵ::Float64=ϵ)
+@inline function sanitize!(A::AbstractArray{<:Real}, ϵ::Real=ϵ)
     @inbounds for i in 1:length(A)
         (!isfinite(A[i]) || A[i] ≤ ϵ) && (A[i] = ϵ)
     end
@@ -85,19 +85,23 @@ Find the vector `v` that best approximates `A` with `v*v'`
     return sqrt.(first(l)/2) * abs.(vec(v))
 end
 
-gen_pairwise(v::AbstractVector{<:Real}) = (v*v')[:]
+outer(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = (v*w')[:]
 
 """
-    gen_pairwise!(A::AbstractVector{<:Real}, v::AbstractVector{<:Real})
+    outer!(A::AbstractVector{<:Real},
+            v::AbstractVector{<:Real},
+            w::AbstractVector{<:Real}=v)
 
-Fill A with `v * v'`
+Fill A with `v * w'`
 """
-function gen_pairwise!(A::AbstractVector{<:Real}, v::AbstractVector{<:Real})
-    N = length(v)
-    for i in 1:N
+function outer!(A::AbstractMatrix{<:Real},
+        v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v)
+    M = length(v)
+    N = length(w)
+
+    for i in 1:M
         for j in 1:N
-            idx = sub2ind((N, N), i, j)
-            A[idx] = v[i] * v[j]
+            A[i, j] = v[i] * w[j]
         end
     end
 
