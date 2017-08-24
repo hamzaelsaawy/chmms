@@ -34,12 +34,14 @@ Reverse an index corresponding to (i, j) to index of (j, i)
 """
 rev_ind(idx::Int, K::Int) = sub2ind((K, K), reverse(ind2sub((K, K), idx))...)
 
-# blatantly copied from github.com/jwmi/HMM
+
 """
     logsumexp(X::AbstractArray{<:Real})
 
-log Σᵢ exp(xᵢ) for a sequence where xᵢ = log yᵢ
+log[Σᵢ exp(xᵢ)] for a sequence where xᵢ = log yᵢ
 ∴ logsumexp(x) = log(Σᵢ yᵢ )
+
+Blatantly copied from github.com/jwmi/HMM
 """
 @inline function logsumexp(X::AbstractArray{<:Real})
     mx = maximum(X)
@@ -52,11 +54,14 @@ log Σᵢ exp(xᵢ) for a sequence where xᵢ = log yᵢ
 end
 
 """
-    single_counts(x::Vector, K::Int)
+    pair_counts(x::Vector, K::Int)
 
-Return the counts of states in [1, K] for observations in [1, K²]
+Return the counts of states in [1, K] for observations in [1, K²], if observations from
+both are being incorperated (i.e. pairwise data).
+
+Same as sum(A, A', 1) where A = reshape(x, K, K).
 """
-@inline function single_counts(x::Vector{<:Real}, K::Int)
+@inline function pair_counts(x::Vector{<:Real}, K::Int)
     A = reshape(x, K, K)
     y = zeros(K)
 
@@ -70,6 +75,17 @@ Return the counts of states in [1, K] for observations in [1, K²]
     return y
 end
 
+"""
+    single_counts(x::Vector, K::Int)
+
+Return the counts of states in [1, K] for observations in [1, K²], if observations are
+from the first state are being used (i.e. just states along axis 1)
+"""
+@inline function single_counts(x::Vector{<:Real}, K::Int)
+    A = reshape(x, K, K)
+
+    return vec(sum(A, 2))
+end
 """
     estimate_outer(A)
 

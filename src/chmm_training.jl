@@ -48,6 +48,10 @@ function zero!(suff::ChmmSuffStats)
     return suff
 end
 
+#
+# Data Likelihood
+#
+
 function data_likelihood!(
         ::Type{PairwiseTrajectory},
         curr::Chmm,
@@ -92,6 +96,10 @@ function data_likelihood!(
         end
     end
 end
+
+#
+# Forward Backward Algorithm (Baum Welch)
+#
 
 function forward_backward!(
         curr::Chmm,
@@ -148,6 +156,17 @@ function forward_backward!(
     return logsumexp(log_α[:, T])
 end
 
+#
+# Sufficient Statistics
+#
+
+# pairwise data is "seen" twice per μ/Σ
+observed_states(::Type{PairwiseTrajectory}, x::Vector{<:Real}, K::Int) =
+        pair_counts(x, K)
+
+observed_states(::Type{SingleTrajectory}, x::Vector{<:Real}, K::Int) =
+        single_counts(x, K)
+
 function _update_suff_stats!(
         traj_type::Type{<:TrajectoryType},
         suff::ChmmSuffStats,
@@ -160,10 +179,8 @@ function _update_suff_stats!(
     temp_counts = vec(sum(γ[:, 1:T], 2))
     suff.counts_KK .+= temp_counts
 
-    # counts_K is used to normalize μ and Σ. pairwise data is "seen" twice per μ/Σ
-    temp_counts_K = single_counts(temp_counts, K)
-    (traj_type == SingleTrajectory) && (temp_counts_K ./= 2)
-    suff.counts_K .+= temp_counts_K
+    # counts_K is used to normalize μ and Σ
+    suff.counts_K .+= observed_states(traj_type, temp_counts, K)
 
     #
     # P
@@ -247,6 +264,10 @@ function update_suff_stats!(
         end
     end
 end
+
+#
+# Parameter Updates
+#
 
 # ϵ is added to values before normalizing to stop divide by zeros
 function update_parameter_estimates!(
