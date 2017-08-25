@@ -173,6 +173,9 @@ function _update_suff_stats!(
         T::Int,
         log_p0::Vector{Float64},
         log_P::Matrix{Float64},
+        log_b::Matrix{Float64},
+        log_α::Matrix{Float64},
+        log_β::Matrix{Float64},
         γ::Matrix{Float64})
     K = length(suff.counts_K)
 
@@ -203,18 +206,21 @@ function _update_suff_stats!(
     return
 end
 
-function update_suff_stats!(
-        ::Type{PairwiseTrajectory},
+function update_suff_stats!(::Type{PairwiseTrajectory},
         suff::ChmmSuffStats,
         X1::AbstractMatrix{<:Real},
         X2::AbstractMatrix{<:Real},
         log_p0::Vector{Float64},
         log_P::Matrix{Float64},
-        γ::Matrix{Float64} )
+        log_b::Matrix{Float64},
+        log_α::Matrix{Float64},
+        log_β::Matrix{Float64},
+        γ::Matrix{Float64})
     K = length(suff.counts_K)
     T = size(X1, 2)
 
-    _update_suff_stats!(PairwiseTrajectory, suff, T, log_p0, log_P, γ)
+    _update_suff_stats!(PairwiseTrajectory, suff, T,
+            log_p0, log_P, log_b, log_α, log_β, γ)
 
     #
     # μ & Σ
@@ -237,18 +243,20 @@ function update_suff_stats!(
     end
 end
 
-function update_suff_stats!(
-        ::Type{SingleTrajectory},
+function update_suff_stats!(::Type{SingleTrajectory},
         suff::ChmmSuffStats,
         X::AbstractMatrix{<:Real},
         log_p0::Vector{Float64},
         log_P::Matrix{Float64},
+        log_b::Matrix{Float64},
+        log_α::Matrix{Float64},
+        log_β::Matrix{Float64},
         γ::Matrix{Float64} )
     K = length(suff.counts_K)
     T = size(X, 2)
 
-    _update_suff_stats!(SingleTrajectory, suff, T, log_p0, log_P, γ)
-
+    _update_suff_stats!(SingleTrajectory, suff, T,
+            log_p0, log_P, log_b, log_α, log_β, γ)
     #
     # μ & Σ
     #
@@ -268,11 +276,12 @@ end
 #
 # Parameter Updates
 #
-
 # ϵ is added to values before normalizing to stop divide by zeros
 function update_parameter_estimates!(
         curr::Chmm,
         suff::ChmmSuffStats,
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
         ϵ::Float64=eps(1.0))
     K = length(suff.counts_K)
     KK = length(suff.counts_KK)
@@ -316,15 +325,16 @@ end
 #
 # EM
 #
-function chmm_em!(S::SparseTrajData, X::Matrix{Float64}, K::Int,
-        traj_ptr::Vector{Int},
-        pairs::Matrix{Int},
+function chmm_em!(S::SparseTrajData, X::Matrix{Float64}, pairs::Matrix{Int},
+        K::Int,
         curr::Chmm,
         suff::ChmmSuffStats;
         N_iters::Int=50,
-        verbose = true,
-        conv_tol = 1e-3,
-        print_every = 10)
+        verbose::Bool=true,
+        conv_tol::Real=1e-3,
+        print_every::Int=10)
+    KK = K^2
+    traj_ptr = S.colptr
     num_trajs = length(traj_ptr) - 1
     num_pairs = size(pairs, 2)
 
@@ -362,11 +372,11 @@ function chmm_em!(S::SparseTrajData, X::Matrix{Float64}, K::Int,
             @assert T == size(X2, 2)
 
             data_likelihood!(PairwiseTrajectory,
-                curr, X1, X2, log_p0, log_P, log_b)
+                    curr, X1, X2, log_p0, log_P, log_b)
             log_like += forward_backward!(curr, T,
-                log_p0, log_P, log_b, log_α, log_β, γ)
-            update_suff_stats!(PairwiseTrajectory,
-                suff, X1, X2, log_p0, log_P, γ)
+                    log_p0, log_P, log_b, log_α, log_β, γ)
+            update_suff_stats!(PairwiseTrajectory, suff, X2, X2,
+                    log_p0, log_P, log_b, log_α, log_β, γ)
         end
 
         #
@@ -377,17 +387,17 @@ function chmm_em!(S::SparseTrajData, X::Matrix{Float64}, K::Int,
             T = size(Xt, 2)
 
             data_likelihood!(SingleTrajectory,
-                curr, Xt, log_p0, log_P, log_b)
+                    curr, Xt, log_p0, log_P, log_b)
             log_like += forward_backward!(curr, T,
-                log_p0, log_P, log_b, log_α, log_β, γ)
-            update_suff_stats!(SingleTrajectory,
-                suff, Xt, log_p0, log_P, γ)
+                    log_p0, log_P, log_b, log_α, log_β, γ)
+            update_suff_stats!(SingleTrajectory, suff, Xt,
+                    log_p0, log_P, log_b, log_α, log_β, γ)
         end
 
         #
         # combine info from all trajectories
         #
-        update_parameter_estimates!(curr, suff)
+        update_parameter_estimates!(curr, suff, log_p0, log_P)
 
         log_like_hist[iter] = log_like
         verbose && (iter % print_every == 0) &&
