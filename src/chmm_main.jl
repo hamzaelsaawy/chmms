@@ -14,7 +14,7 @@ end
 
 # initial EM estimates
 # X is D×T, where D is data dimension
-function chmm_from_data(X, K::Int)
+function chmm_from_data(X::Matrix{<:Real}, K::Int)
     D = size(X, 1)
 
     R = kmeans(X, K, maxiter=50, display=:none)

@@ -313,3 +313,91 @@ function update_parameter_estimates!(
     end
 end
 
+#
+# EM
+#
+function chmm_em!(S::SparseTrajData, X::Matrix{Float64}, K::Int,
+        traj_ptr::Vector{Int},
+        pairs::Matrix{Int},
+        curr::Chmm,
+        suff::ChmmSuffStats;
+        N_iters::Int=50,
+        verbose = true,
+        conv_tol = 1e-3,
+        print_every = 10)
+    num_trajs = length(traj_ptr) - 1
+    num_pairs = size(pairs, 2)
+
+    log_p0 = log.(outer(curr.π0))
+
+    log_P = empty(KK, KK)
+    for k in 1:KK
+        i, j = ind2sub((K, K), k)
+        outer!(reshape(view(log_P, :, k), K, K), curr.P[:, i, j])
+    end
+    map!(log, log_P, log_P)
+
+    T_max = maximum(diff(traj_ptr))
+
+    log_b = empty(KK, T_max)
+    log_α = similar(log_b)
+    log_β = similar(log_b)
+    γ = similar(log_b)
+
+    log_like_hist = fill(NaN, N_iters)
+
+    for iter in 1:N_iters
+        log_like = 0.0
+        zero!(suff)
+
+        #
+        # Pairwise Trajectories
+        #
+        for e in 1:num_pairs
+            (c1, c2, start_frame, end_frame) = pairs[:, e]
+            X1 = get_trajectory_from_frame(S, X, c1, start_frame, end_frame)
+            X2 = get_trajectory_from_frame(S, X, c2, start_frame, end_frame)
+
+            T = size(X1, 2)
+            @assert T == size(X2, 2)
+
+            data_likelihood!(PairwiseTrajectory,
+                curr, X1, X2, log_p0, log_P, log_b)
+            log_like += forward_backward!(curr, T,
+                log_p0, log_P, log_b, log_α, log_β, γ)
+            update_suff_stats!(PairwiseTrajectory,
+                suff, X1, X2, log_p0, log_P, γ)
+        end
+
+        #
+        # Single Trajectories
+        #
+        for id in 1:num_trajs # all trajectories
+            Xt = get_trajectory_from_ptr(id, X, traj_ptr)
+            T = size(Xt, 2)
+
+            data_likelihood!(SingleTrajectory,
+                curr, Xt, log_p0, log_P, log_b)
+            log_like += forward_backward!(curr, T,
+                log_p0, log_P, log_b, log_α, log_β, γ)
+            update_suff_stats!(SingleTrajectory,
+                suff, Xt, log_p0, log_P, γ)
+        end
+
+        #
+        # combine info from all trajectories
+        #
+        update_parameter_estimates!(curr, suff)
+
+        log_like_hist[iter] = log_like
+        verbose && (iter % print_every == 0) &&
+                @printf("iteration %6d:  %.3f\n", iter, log_like)
+
+        if (iter ≥ 2) && (abs(log_like_hist[iter] - log_like_hist[iter - 1]) ≤ conv_tol)
+            break
+        end
+    end
+
+    return curr, log_like_hist
+end
+
