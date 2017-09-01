@@ -325,7 +325,7 @@ end
 #
 # EM
 #
-function chmm_em!(S::SparseTrajData, X::Matrix{Float64}, pairs::Matrix{Int},
+function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         K::Int,
         curr::Chmm,
         suff::ChmmSuffStats;

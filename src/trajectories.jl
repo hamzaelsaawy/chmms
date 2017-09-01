@@ -44,7 +44,7 @@ end
     ((r1 > r2) || (A.rowval[r1] != r)) ? 0 : r1
 end
 
-@inline function get_trajectory_from_frame(S::SparseTrajData, X::Matrix{Float64},
+@inline function get_trajectory_from_frame(S::SparseMatrixCSC, X::Matrix{Float64},
         c::Int, start_frame::Int, end_frame::Int)
     s = sp_sub2ind(S, start_frame, c)
     e = sp_sub2ind(S, end_frame, c)
