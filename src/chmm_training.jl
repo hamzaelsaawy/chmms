@@ -52,13 +52,10 @@ end
 # Data Likelihood
 #
 
-function data_likelihood!(
-        ::Type{PairwiseTrajectory},
+function data_likelihood!(::Type{PairwiseTrajectory},
         curr::Chmm,
         X1::AbstractMatrix{<:Real},
         X2::AbstractMatrix{<:Real},
-        log_p0::Vector{Float64},
-        log_P::Matrix{Float64},
         log_b::Matrix{Float64})
     K = curr.K
     T = size(X1, 2)
@@ -75,24 +72,23 @@ function data_likelihood!(
             l2[i] = logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o2)
         end
 
-        log_b[:, t] = (l1 .+ l2')[:]
+        log_b[:, t] = vec(l1 .+ l2')
     end
 end
 
-function data_likelihood!(
-        ::Type{SingleTrajectory},
-        curr::Chmm, X::AbstractMatrix{<:Real},
-        log_p0::Vector{Float64},
-        log_P::Matrix{Float64},
+function data_likelihood!(::Type{SingleTrajectory},
+        curr::Chmm,
+        X::AbstractMatrix{<:Real},
         log_b::Matrix{Float64})
     K = curr.K
     T = size(X, 2)
 
     for t in 1:T
-        o1 = X[:, t]
+        o = X[:, t]
+
         for i in 1:K
             reshape(view(log_b, :, t), K, K)[i, :] =
-                    logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o1)
+                    logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o)
         end
     end
 end
@@ -160,12 +156,9 @@ end
 # Sufficient Statistics
 #
 
-# pairwise data is "seen" twice per μ/Σ
-observed_states(::Type{PairwiseTrajectory}, x::Vector{<:Real}, K::Int) =
-        pair_counts(x, K)
-
-observed_states(::Type{SingleTrajectory}, x::Vector{<:Real}, K::Int) =
-        single_counts(x, K)
+observed_states(::Type{SingleTrajectory}, x::Vector{<:Real}, K::Int) = single_counts(x, K)
+# each mean is "seen" twice per time step
+observed_states(::Type{PairwiseTrajectory}, x::Vector{<:Real}, K::Int) = pair_counts(x, K)
 
 function _update_suff_stats!(
         traj_type::Type{<:TrajectoryType},
@@ -206,6 +199,36 @@ function _update_suff_stats!(
     return
 end
 
+function update_suff_stats!(::Type{SingleTrajectory},
+        suff::ChmmSuffStats,
+        X::AbstractMatrix{<:Real},
+        log_p0::Vector{Float64},
+        log_P::Matrix{Float64},
+        log_b::Matrix{Float64},
+        log_α::Matrix{Float64},
+        log_β::Matrix{Float64},
+        γ::Matrix{Float64} )
+    K = length(suff.counts_K)
+    T = size(X, 2)
+
+    _update_suff_stats!(SingleTrajectory, suff, T,
+            log_p0, log_P, log_b, log_α, log_β, γ)
+    #
+    # μ & Σ
+    #
+    for t in 1:T
+        p = reshape(γ[:, t], (K, K)) .+ ϵ
+        o = X[:, t]
+
+        for k in 1:K
+            pz = sum(p[k, :])
+
+            suff.ms[k] .+= pz * o
+            suff.Ss[k] .+= pz * o * o'
+        end
+    end
+end
+
 function update_suff_stats!(::Type{PairwiseTrajectory},
         suff::ChmmSuffStats,
         X1::AbstractMatrix{<:Real},
@@ -243,36 +266,6 @@ function update_suff_stats!(::Type{PairwiseTrajectory},
     end
 end
 
-function update_suff_stats!(::Type{SingleTrajectory},
-        suff::ChmmSuffStats,
-        X::AbstractMatrix{<:Real},
-        log_p0::Vector{Float64},
-        log_P::Matrix{Float64},
-        log_b::Matrix{Float64},
-        log_α::Matrix{Float64},
-        log_β::Matrix{Float64},
-        γ::Matrix{Float64} )
-    K = length(suff.counts_K)
-    T = size(X, 2)
-
-    _update_suff_stats!(SingleTrajectory, suff, T,
-            log_p0, log_P, log_b, log_α, log_β, γ)
-    #
-    # μ & Σ
-    #
-    for t in 1:T
-        p = reshape(γ[:, t], (K, K)) .+ ϵ
-        o = X[:, t]
-
-        for k in 1:K
-            pz = sum(p[k, :])
-
-            suff.ms[k] .+= pz * o
-            suff.Ss[k] .+= pz * o * o'
-        end
-    end
-end
-
 #
 # Parameter Updates
 #
@@ -286,26 +279,28 @@ function update_parameter_estimates!(
     K = length(suff.counts_K)
     KK = length(suff.counts_KK)
 
-    # swap the indices of y ∈ [1, K²]
-    # if T is N×K², then T[:, swapped_indes] is the same as:
-    #   R = reshape(T, (N, K, K)
-    #   permutedims!(R, R, [1, 3, 2])
-    swapped_inds = [rev_ind(i, K) for i in 1:KK]
-
     suff.P_flat .+= ϵ
-    suff.P_flat .+= suff.P_flat[:, swapped_inds]
-    suff.P_flat ./= sum(suff.P_flat, 1)
 
-    for k in 1:KK
-        i, j = ind2sub((K, K), k)
-        curr.P[:, i, j] = estimate_outer(reshape(suff.P_flat[:, k], K, K))
-        outer!(reshape(view(log_P, :, k), K, K), curr.P[:, i, j])
+    # if P_flat[:, (i, j)] = (P[:, i, j] * P[:, j, i]')[:]
+    #  then P_flat[(i, j), (l, m)] = P_flat[(j, i), (m, l)]
+    #  where (i, j) = sub2ind(K, K, i, j)
+    for i in 1:K
+        for j in 1:i
+            k1 = sub2ind((K, K), i, j)
+            k2 = sub2ind((K, K), j, i)
+            A = reshape(suff.P_flat[:, k1], K, K) + reshape(suff.P_flat[:, k2], K, K)'
+            p1, p2 = estimate_outer_double(A)
+
+            curr.P[:, i, j] = p1
+            curr.P[:, j, i] = p2
+            outer!(reshape(view(log_P, :, k), K, K), p1, p2)
+        end
     end
     map!(log, log_P, log_P)
 
     suff.p0_flat .+= ϵ
 
-    curr.π0[:] = estimate_outer(reshape(suff.p0_flat, K, K))
+    curr.π0[:] = estimate_outer_single(reshape(suff.p0_flat, K, K))
     curr.π0 ./= sum(curr.π0)
     outer!(reshape(log_p0, K, K), curr.π0)
     map!(log, log_p0, log_p0)
@@ -338,12 +333,12 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
     num_trajs = length(traj_ptr) - 1
     num_pairs = size(pairs, 2)
 
-    log_p0 = log.(outer(curr.π0))
+    log_p0 = log.(vec(outer(curr.π0)))
 
     log_P = empty(KK, KK)
     for k in 1:KK
         i, j = ind2sub((K, K), k)
-        outer!(reshape(view(log_P, :, k), K, K), curr.P[:, i, j])
+        outer!(reshape(view(log_P, :, k), K, K), curr.P[:, i, j], curr.P[:, j, i])
     end
     map!(log, log_P, log_P)
 
@@ -371,8 +366,7 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
             T = size(X1, 2)
             @assert T == size(X2, 2)
 
-            data_likelihood!(PairwiseTrajectory,
-                    curr, X1, X2, log_p0, log_P, log_b)
+            data_likelihood!(PairwiseTrajectory, curr, X1, X2, log_b)
             log_like += forward_backward!(curr, T,
                     log_p0, log_P, log_b, log_α, log_β, γ)
             update_suff_stats!(PairwiseTrajectory, suff, X2, X2,
@@ -386,8 +380,7 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
             Xt = get_trajectory_from_ptr(id, X, traj_ptr)
             T = size(Xt, 2)
 
-            data_likelihood!(SingleTrajectory,
-                    curr, Xt, log_p0, log_P, log_b)
+            data_likelihood!(SingleTrajectory, curr, Xt, log_b)
             log_like += forward_backward!(curr, T,
                     log_p0, log_P, log_b, log_α, log_β, γ)
             update_suff_stats!(SingleTrajectory, suff, Xt,

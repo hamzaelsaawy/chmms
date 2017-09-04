@@ -11,9 +11,9 @@ empty(T::Type, dims::Int...) = Array{T}(dims...)
 empty(dims::Int...) = empty(Float64, dims...)
 
 # a bit of overkill really with these guys
-const ϵ = eps(1.0)
-const log_ϵ = -1_000.0
-const ϵI = UniformScaling(1e-6)
+const ϵ = 1e-30 # << eps(1.0), so only numbers ≈ 0 will be affected
+const log_ϵ = -1_000_000.0
+const ϵI = UniformScaling(ϵ)
 
 const log2π = float(Distributions.log2π)
 
@@ -86,13 +86,14 @@ from the first state are being used (i.e. just states along axis 1)
 
     return vec(sum(A, 2))
 end
+
 """
-    estimate_outer(A)
+    estimate_outer_single(A)
 
 Find the vector `v` that best approximates `A` with `v*v'`
 `A` should be symmetric
 """
-@inline function estimate_outer(A::Matrix{<:Real})
+@inline function estimate_outer_single(A::Matrix{<:Real})
     # make symmetric
     A += A'
     l, v = eigs(A, nev=1)
@@ -101,10 +102,23 @@ Find the vector `v` that best approximates `A` with `v*v'`
     return sqrt.(first(l)/2) * abs.(vec(v))
 end
 
-outer(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = (v*w')[:]
+"""
+    estimate_outer_double(A)
+
+Find the vectors `u` and `v` that best approximates `A` with `u*v'`
+Answer is normalized to sum to one
+"""
+@inline function estimate_outer_single(A::Matrix{<:Real})
+    F, _ = svds(A, nsv=1)
+
+    return _clean_svd(F.U), _clean_svd(F.Vt)
+end
+_clean_svd(A::AbstractArray{<:Real}) =  normalize(abs.(vec(A)), 1)
+
+outer(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = v*w'
 
 """
-    outer!(A::AbstractVector{<:Real},
+    flat_outer!(A::AbstractVector{<:Real},
             v::AbstractVector{<:Real},
             w::AbstractVector{<:Real}=v)
 
