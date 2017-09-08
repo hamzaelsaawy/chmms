@@ -108,7 +108,7 @@ end
 Find the vectors `u` and `v` that best approximates `A` with `u*v'`
 Answer is normalized to sum to one
 """
-@inline function estimate_outer_single(A::Matrix{<:Real})
+@inline function estimate_outer_double(A::Matrix{<:Real})
     F, _ = svds(A, nsv=1)
 
     return _clean_svd(F.U), _clean_svd(F.Vt)

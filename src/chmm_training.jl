@@ -293,7 +293,8 @@ function update_parameter_estimates!(
 
             curr.P[:, i, j] = p1
             curr.P[:, j, i] = p2
-            outer!(reshape(view(log_P, :, k), K, K), p1, p2)
+            outer!(reshape(view(log_P, :, k1), K, K), p1, p2)
+            outer!(reshape(view(log_P, :, k2), K, K), p2, p1)
         end
     end
     map!(log, log_P, log_P)
