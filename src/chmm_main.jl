@@ -7,17 +7,21 @@ struct Chmm
     D::Int
 
     π0::Vector{Float64}
-    P::Array{Float64, 3}
+    P::Array{Float64, 2} # switching to full (K×K) × (K×K) from (K×K×K)
     μs::Vector{Vector{Float64}}
     Σs::Vector{Matrix{Float64}}
 end
 
-# initial EM estimates
-# X is D×T, where D is data dimension
-function chmm_from_data(X::Matrix{<:Real}, K::Int)
+
+"""
+initial EM estimates (just does k-means)
+X is D×T, where D is data dimension
+"""
+function chmm_from_data(X::Matrix{<:Real}, K::Int;
+        maxiter::Int=50, display::Symbol=:none) # kmeans params
     D = size(X, 1)
 
-    R = kmeans(X, K, maxiter=50, display=:none)
+    R = kmeans(X, K, maxiter=maxiter, display=display)
     ms = [R.centers[:, i] for i in 1:K]
     Ss = [eye(D) for _ in 1:K]
 
@@ -26,10 +30,9 @@ function chmm_from_data(X::Matrix{<:Real}, K::Int)
     P = rand(K, K, K)
     P ./= sum(P, 1)
 
-    return Chmm(K, D, p0, P, ms, Ss)
+    return Chmm(K, D, vec(outer(p0)), make_flat(P), ms, Ss)
 end
 
-# make the μ and Σ generation more sophisticated?
 function rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
     π0 = rand(K)
     π0 ./= sum(π0)
@@ -42,26 +45,29 @@ function rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
     μs = [randn(D) * μ_scale for _ in 1:K]
     Σs = [eye(D) * rand() * Σ_scale for _ in 1:K]
 
-    return Chmm(K, D, π0, P, μs, Σs)
+    return Chmm(K, D, vec(flatten(π0)), make_flat(P), μs, Σs)
 end
 
 function simulate_model(model::Chmm, T::Int=500)
     D = model.D
+    K = model.K
+    KK = K^2
+
     Z = empty(Int, 2, T)
     X1 = empty(D, T)
     X2 = similar(X1)
 
     sqrtm_Σs = map(sqrtm, model.Σs)
-    z = wsample(1:K, model.π0, 2)
+    w = wsample(1:KK, model.π0)
+    z1, z2 = ind2sub((K, K), w)
 
     for t in 1:T
-        z1 = wsample(1:K, model.P[:, z...])
-        z2 = wsample(1:K, model.P[:, reverse(z)...])
-        z = [z1, z2]
+        w = wsample(1:KK, model.P[:, w])
+        z1, z2 = ind2sub((K, K), w)
 
-        Z[:, t] = z
-        X1[:, t] = sqrtm_Σs[z[1]] * randn(D) + model.μs[z[1]]
-        X2[:, t] = sqrtm_Σs[z[2]] * randn(D) + model.μs[z[2]]
+        Z[:, t] = [z1, z2]
+        X1[:, t] = sqrtm_Σs[z1] * randn(D) + model.μs[z1]
+        X2[:, t] = sqrtm_Σs[z2] * randn(D) + model.μs[z2]
     end
 
     return (Z, X1, X2)

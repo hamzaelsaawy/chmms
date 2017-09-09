@@ -87,7 +87,7 @@ function data_likelihood!(::Type{SingleTrajectory},
         o = X[:, t]
 
         for i in 1:K
-            reshape(view(log_b, :, t), K, K)[i, :] =
+            square_view(log_b, K, :, t)[i, :] =
                     logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o)
         end
     end
@@ -293,8 +293,8 @@ function update_parameter_estimates!(
 
             curr.P[:, i, j] = p1
             curr.P[:, j, i] = p2
-            outer!(reshape(view(log_P, :, k1), K, K), p1, p2)
-            outer!(reshape(view(log_P, :, k2), K, K), p2, p1)
+            outer!(square_view(log_P, K, :, k1), p1, p2)
+            outer!(square_view(log_P, K, :, k2), p2, p1)
         end
     end
     map!(log, log_P, log_P)
@@ -339,7 +339,7 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
     log_P = empty(KK, KK)
     for k in 1:KK
         i, j = ind2sub((K, K), k)
-        outer!(reshape(view(log_P, :, k), K, K), curr.P[:, i, j], curr.P[:, j, i])
+        outer!(square_view(log_P, K, :, k), curr.P[:, i, j], curr.P[:, j, i])
     end
     map!(log, log_P, log_P)
 

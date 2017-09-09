@@ -53,6 +53,66 @@ Blatantly copied from github.com/jwmi/HMM
     end
 end
 
+# reshapes and indexing don't mix well
+# e.g.
+#   A = zeros(16, 16)
+#   b = reshape(A[:, 3], 4, 4)
+#   b[:] = rand(4) * rand(4)'
+#   # A is unchanged
+square_view(A::Array, K::Int, inds...) = reshape(view(A, inds...), K, K)
+
+outer(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = v*w'
+
+"""
+    outer!(A::AbstractVector{<:Real},
+            v::AbstractVector{<:Real},
+            w::AbstractVector{<:Real}=v)
+
+Set `A` to `A = v * w'`
+"""
+function outer!(A::AbstractMatrix{<:Real},
+        v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v)
+    M = length(v)
+    N = length(w)
+    @assert size(A) == (M, N)
+
+    for i in 1:M
+        for j in 1:N
+            @inbounds A[i, j] = v[i] * w[j]
+        end
+    end
+
+    return A
+end
+
+# go from dist over P(s₁' | s₁, s₂) to P((s₁', s₂'), (s₁, s₂))
+@inline function make_flat(P::Matrix{Float64, 3})
+    K = size(P, 1)
+    KK = K^2
+
+    @assert K == size(P, 2) == size(P, 3)
+
+    P_flat = empty(KK, KK)
+    for k in 1:KK
+        i, j = ind2sub((K, K), k)
+        outer!(square_view(P_flat, K, :, k), P[:, i, j], P[:, j, i])
+    end
+
+    return P_flat
+end
+
+"""
+    single_counts(x::Vector, K::Int)
+
+Return the counts of states in [1, K] for observations in [1, K²], if observations are
+from the first state are being used (i.e. just states along axis 1)
+"""
+@inline function single_counts(x::Vector{<:Real}, K::Int)
+    A = reshape(x, K, K)
+
+    return vec(sum(A, 2))
+end
+
 """
     pair_counts(x::Vector, K::Int)
 
@@ -73,18 +133,6 @@ Same as sum(A, A', 1) where A = reshape(x, K, K).
     end
 
     return y
-end
-
-"""
-    single_counts(x::Vector, K::Int)
-
-Return the counts of states in [1, K] for observations in [1, K²], if observations are
-from the first state are being used (i.e. just states along axis 1)
-"""
-@inline function single_counts(x::Vector{<:Real}, K::Int)
-    A = reshape(x, K, K)
-
-    return vec(sum(A, 2))
 end
 
 """
@@ -114,27 +162,4 @@ Answer is normalized to sum to one
     return _clean_svd(F.U), _clean_svd(F.Vt)
 end
 _clean_svd(A::AbstractArray{<:Real}) =  normalize(abs.(vec(A)), 1)
-
-outer(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = v*w'
-
-"""
-    flat_outer!(A::AbstractVector{<:Real},
-            v::AbstractVector{<:Real},
-            w::AbstractVector{<:Real}=v)
-
-Fill A with `v * w'`
-"""
-function outer!(A::AbstractMatrix{<:Real},
-        v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v)
-    M = length(v)
-    N = length(w)
-
-    for i in 1:M
-        for j in 1:N
-            A[i, j] = v[i] * w[j]
-        end
-    end
-
-    return A
-end
 
