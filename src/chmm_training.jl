@@ -53,11 +53,13 @@ end
 #
 
 function data_likelihood!(::Type{PairwiseTrajectory},
-        curr::Chmm,
+#        curr::Chmm,
+        normals::Vector{<:MvNormal},
         X1::AbstractMatrix{<:Real},
         X2::AbstractMatrix{<:Real},
         log_b::Matrix{Float64})
-    K = curr.K
+#    K = curr.K
+    K = length(normals)
     T = size(X1, 2)
 
     l1 = empty(K)
@@ -68,8 +70,8 @@ function data_likelihood!(::Type{PairwiseTrajectory},
         o2 = X2[:, t]
 
         for i in 1:K
-            l1[i] = logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o1)
-            l2[i] = logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o2)
+            l1[i] = logpdf(normals[i], o1)
+            l2[i] = logpdf(normals[i], o2)
         end
 
         log_b[:, t] = vec(l1 .+ l2')
@@ -77,18 +79,20 @@ function data_likelihood!(::Type{PairwiseTrajectory},
 end
 
 function data_likelihood!(::Type{SingleTrajectory},
-        curr::Chmm,
+#        curr::Chmm,
+        normals::Vector{<:MvNormal},
         X::AbstractMatrix{<:Real},
         log_b::Matrix{Float64})
-    K = curr.K
+#    K = curr.K
+    K = length(normals)
     T = size(X, 2)
 
     for t in 1:T
         o = X[:, t]
 
+        r = square_view(log_b, K, :, t)
         for i in 1:K
-            square_view(log_b, K, :, t)[i, :] =
-                    logpdf(MvNormal(curr.μs[i], curr.Σs[i]), o)
+            r[i, :] = logpdf(normals[i], o)
         end
     end
 end
@@ -96,7 +100,6 @@ end
 #
 # Forward Backward Algorithm (Baum Welch)
 #
-
 function forward_backward!(
         curr::Chmm,
         T::Int,
@@ -160,6 +163,7 @@ observed_states(::Type{SingleTrajectory}, x::Vector{<:Real}, K::Int) = single_co
 # each mean is "seen" twice per time step
 observed_states(::Type{PairwiseTrajectory}, x::Vector{<:Real}, K::Int) = pair_counts(x, K)
 
+# shared code between pairwise and single trajs
 function _update_suff_stats!(
         traj_type::Type{<:TrajectoryType},
         suff::ChmmSuffStats,
@@ -280,7 +284,7 @@ function update_parameter_estimates!(
     KK = length(suff.counts_KK)
 
     suff.P_flat .+= ϵ
-
+#=
     # if P_flat[:, (i, j)] = (P[:, i, j] * P[:, j, i]')[:]
     #  then P_flat[(i, j), (l, m)] = P_flat[(j, i), (m, l)]
     #  where (i, j) = sub2ind(K, K, i, j)
@@ -297,14 +301,19 @@ function update_parameter_estimates!(
             outer!(square_view(log_P, K, :, k2), p2, p1)
         end
     end
-    map!(log, log_P, log_P)
+=#
+    map!(identity, curr.P, suff.P_flat)
+    curr.P ./= sum(curr.P, 1)
+    map!(log, log_P, curr.P)
 
     suff.p0_flat .+= ϵ
-
+#=
     curr.π0[:] = estimate_outer_single(reshape(suff.p0_flat, K, K))
+=#
+    map!(identity, curr.π0, suff.p0_flat)
     curr.π0 ./= sum(curr.π0)
-    outer!(reshape(log_p0, K, K), curr.π0)
-    map!(log, log_p0, log_p0)
+#    outer!(reshape(log_p0, K, K), curr.π0)
+    map!(log, log_p0, curr.π0)
 
     suff.counts_K .+= ϵ
     for k in 1:K
@@ -334,14 +343,18 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
     num_trajs = length(traj_ptr) - 1
     num_pairs = size(pairs, 2)
 
-    log_p0 = log.(vec(outer(curr.π0)))
+#    log_p0 = log.(vec(outer(curr.π0)))
+    log_p0 = log.(curr.π0)
 
+#=
     log_P = empty(KK, KK)
     for k in 1:KK
         i, j = ind2sub((K, K), k)
         outer!(square_view(log_P, K, :, k), curr.P[:, i, j], curr.P[:, j, i])
     end
     map!(log, log_P, log_P)
+=#
+    log_P = log.(curr.P)
 
     T_max = maximum(diff(traj_ptr))
 
@@ -356,6 +369,23 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         log_like = 0.0
         zero!(suff)
 
+        normals = [ MvNormal(curr.μs[i], curr.Σs[i]) for i in 1:K ]
+
+        #
+        # Single Trajectories
+        #
+        for id in 1:num_trajs # all trajectories
+            Xt = get_trajectory_from_ptr(id, X, traj_ptr)
+            T = size(Xt, 2)
+
+#            data_likelihood!(SingleTrajectory, curr, Xt, log_b)
+            data_likelihood!(SingleTrajectory, normals, Xt, log_b)
+            log_like += forward_backward!(curr, T,
+                    log_p0, log_P, log_b, log_α, log_β, γ)
+            update_suff_stats!(SingleTrajectory, suff, Xt,
+                    log_p0, log_P, log_b, log_α, log_β, γ)
+        end
+
         #
         # Pairwise Trajectories
         #
@@ -367,24 +397,11 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
             T = size(X1, 2)
             @assert T == size(X2, 2)
 
-            data_likelihood!(PairwiseTrajectory, curr, X1, X2, log_b)
+#            data_likelihood!(PairwiseTrajectory, curr, X1, X2, log_b)
+            data_likelihood!(PairwiseTrajectory, normals, X1, X2, log_b)
             log_like += forward_backward!(curr, T,
                     log_p0, log_P, log_b, log_α, log_β, γ)
             update_suff_stats!(PairwiseTrajectory, suff, X2, X2,
-                    log_p0, log_P, log_b, log_α, log_β, γ)
-        end
-
-        #
-        # Single Trajectories
-        #
-        for id in 1:num_trajs # all trajectories
-            Xt = get_trajectory_from_ptr(id, X, traj_ptr)
-            T = size(Xt, 2)
-
-            data_likelihood!(SingleTrajectory, curr, Xt, log_b)
-            log_like += forward_backward!(curr, T,
-                    log_p0, log_P, log_b, log_α, log_β, γ)
-            update_suff_stats!(SingleTrajectory, suff, Xt,
                     log_p0, log_P, log_b, log_α, log_β, γ)
         end
 

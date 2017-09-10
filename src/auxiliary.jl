@@ -86,7 +86,7 @@ function outer!(A::AbstractMatrix{<:Real},
 end
 
 # go from dist over P(s₁' | s₁, s₂) to P((s₁', s₂'), (s₁, s₂))
-@inline function make_flat(P::Matrix{Float64, 3})
+@inline function make_flat(P::Array{Float64, 3})
     K = size(P, 1)
     KK = K^2
 
@@ -107,7 +107,7 @@ end
 Return the counts of states in [1, K] for observations in [1, K²], if observations are
 from the first state are being used (i.e. just states along axis 1)
 """
-@inline function single_counts(x::Vector{<:Real}, K::Int)
+@inline function single_counts(x::AbstractVector{<:Real}, K::Int)
     A = reshape(x, K, K)
 
     return vec(sum(A, 2))
@@ -119,16 +119,16 @@ end
 Return the counts of states in [1, K] for observations in [1, K²], if observations from
 both are being incorperated (i.e. pairwise data).
 
-Same as sum(A, A', 1) where A = reshape(x, K, K).
+Same as `sum(A + A', 1)` where `A = reshape(x, K, K)`
 """
-@inline function pair_counts(x::Vector{<:Real}, K::Int)
+@inline function pair_counts(x::AbstractVector{<:Real}, K::Int)
     A = reshape(x, K, K)
     y = zeros(K)
 
     for i in 1:K
         for j in 1:K
-            y[i] += A[i, j]
-            y[j] += A[i, j]
+            @inbounds y[i] += A[i, j]
+            @inbounds y[j] += A[i, j]
         end
     end
 

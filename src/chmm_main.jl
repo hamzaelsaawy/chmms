@@ -45,7 +45,7 @@ function rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
     μs = [randn(D) * μ_scale for _ in 1:K]
     Σs = [eye(D) * rand() * Σ_scale for _ in 1:K]
 
-    return Chmm(K, D, vec(flatten(π0)), make_flat(P), μs, Σs)
+    return Chmm(K, D, vec(outer(π0)), make_flat(P), μs, Σs)
 end
 
 function simulate_model(model::Chmm, T::Int=500)

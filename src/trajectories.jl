@@ -32,7 +32,16 @@ end
     return view(X, :, start_traj:end_traj)
 end
 
+@inline function get_trajectory_from_frame(S::SparseMatrixCSC, X::Matrix{Float64},
+        c::Int, start_frame::Int, end_frame::Int)
+    s = sp_sub2ind(S, start_frame, c)
+    e = sp_sub2ind(S, end_frame, c)
+
+    return view(X, :, s:e)
+end
+
 # stolen from julia/base/sparse/sparsematrix.jl
+# linear index into S.nzval
 @inline function sp_sub2ind(A::SparseMatrixCSC, r::Int, c::Int)
     (1 <= r <= A.m && 1 <= c <= A.n) || return 0
 
@@ -42,13 +51,5 @@ end
     (r1 > r2) && return 0
     r1 = searchsortedfirst(A.rowval, r, r1, r2, Base.Order.Forward)
     ((r1 > r2) || (A.rowval[r1] != r)) ? 0 : r1
-end
-
-@inline function get_trajectory_from_frame(S::SparseMatrixCSC, X::Matrix{Float64},
-        c::Int, start_frame::Int, end_frame::Int)
-    s = sp_sub2ind(S, start_frame, c)
-    e = sp_sub2ind(S, end_frame, c)
-
-    return view(X, :, s:e)
 end
 
