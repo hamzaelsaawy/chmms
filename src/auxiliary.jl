@@ -119,7 +119,7 @@ end
 Return the counts of states in [1, K] for observations in [1, K²], if observations from
 both are being incorperated (i.e. pairwise data).
 
-Same as `sum(A + A', 1)` where `A = reshape(x, K, K)`
+Same as `sum(A + A', 1)/2` where `A = reshape(x, K, K)`
 """
 @inline function pair_counts(x::AbstractVector{<:Real}, K::Int)
     A = reshape(x, K, K)
