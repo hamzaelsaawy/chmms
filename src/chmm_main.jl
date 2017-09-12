@@ -12,7 +12,6 @@ struct Chmm
     Σs::Vector{Matrix{Float64}}
 end
 
-
 """
 initial EM estimates (just does k-means)
 X is D×T, where D is data dimension

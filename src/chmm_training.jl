@@ -53,12 +53,10 @@ end
 #
 
 function data_likelihood!(::Type{PairwiseTrajectory},
-#        curr::Chmm,
         normals::Vector{<:MvNormal},
         X1::AbstractMatrix{<:Real},
         X2::AbstractMatrix{<:Real},
         log_b::Matrix{Float64})
-#    K = curr.K
     K = length(normals)
     T = size(X1, 2)
 
@@ -69,9 +67,9 @@ function data_likelihood!(::Type{PairwiseTrajectory},
         o1 = X1[:, t]
         o2 = X2[:, t]
 
-        for i in 1:K
-            l1[i] = logpdf(normals[i], o1)
-            l2[i] = logpdf(normals[i], o2)
+        for k in 1:K
+            l1[k] = logpdf(normals[k], o1)
+            l2[k] = logpdf(normals[k], o2)
         end
 
         log_b[:, t] = vec(l1 .+ l2')
@@ -79,20 +77,18 @@ function data_likelihood!(::Type{PairwiseTrajectory},
 end
 
 function data_likelihood!(::Type{SingleTrajectory},
-#        curr::Chmm,
         normals::Vector{<:MvNormal},
         X::AbstractMatrix{<:Real},
         log_b::Matrix{Float64})
-#    K = curr.K
     K = length(normals)
     T = size(X, 2)
 
     for t in 1:T
         o = X[:, t]
-
         r = square_view(log_b, K, :, t)
-        for i in 1:K
-            r[i, :] = logpdf(normals[i], o)
+
+        for k in 1:K
+            r[k, :] = logpdf(normals[k], o)
         end
     end
 end
@@ -284,35 +280,13 @@ function update_parameter_estimates!(
     KK = length(suff.counts_KK)
 
     suff.P_flat .+= ϵ
-#=
-    # if P_flat[:, (i, j)] = (P[:, i, j] * P[:, j, i]')[:]
-    #  then P_flat[(i, j), (l, m)] = P_flat[(j, i), (m, l)]
-    #  where (i, j) = sub2ind(K, K, i, j)
-    for i in 1:K
-        for j in 1:i
-            k1 = sub2ind((K, K), i, j)
-            k2 = sub2ind((K, K), j, i)
-            A = reshape(suff.P_flat[:, k1], K, K) + reshape(suff.P_flat[:, k2], K, K)'
-            p1, p2 = estimate_outer_double(A)
-
-            curr.P[:, i, j] = p1
-            curr.P[:, j, i] = p2
-            outer!(square_view(log_P, K, :, k1), p1, p2)
-            outer!(square_view(log_P, K, :, k2), p2, p1)
-        end
-    end
-=#
     map!(identity, curr.P, suff.P_flat)
     curr.P ./= sum(curr.P, 1)
     map!(log, log_P, curr.P)
 
     suff.p0_flat .+= ϵ
-#=
-    curr.π0[:] = estimate_outer_single(reshape(suff.p0_flat, K, K))
-=#
     map!(identity, curr.π0, suff.p0_flat)
     curr.π0 ./= sum(curr.π0)
-#    outer!(reshape(log_p0, K, K), curr.π0)
     map!(log, log_p0, curr.π0)
 
     suff.counts_K .+= ϵ
@@ -343,17 +317,7 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
     num_trajs = length(traj_ptr) - 1
     num_pairs = size(pairs, 2)
 
-#    log_p0 = log.(vec(outer(curr.π0)))
     log_p0 = log.(curr.π0)
-
-#=
-    log_P = empty(KK, KK)
-    for k in 1:KK
-        i, j = ind2sub((K, K), k)
-        outer!(square_view(log_P, K, :, k), curr.P[:, i, j], curr.P[:, j, i])
-    end
-    map!(log, log_P, log_P)
-=#
     log_P = log.(curr.P)
 
     T_max = maximum(diff(traj_ptr))
@@ -372,13 +336,12 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         normals = [ MvNormal(curr.μs[i], curr.Σs[i]) for i in 1:K ]
 
         #
-        # Single Trajectories
+        # Single Trajectories 
         #
         for id in 1:num_trajs # all trajectories
-            Xt = get_trajectory_from_ptr(id, X, traj_ptr)
+            Xt = get_trajectory_from_ptr(X, traj_ptr, id)
             T = size(Xt, 2)
 
-#            data_likelihood!(SingleTrajectory, curr, Xt, log_b)
             data_likelihood!(SingleTrajectory, normals, Xt, log_b)
             log_like += forward_backward!(curr, T,
                     log_p0, log_P, log_b, log_α, log_β, γ)
@@ -390,14 +353,13 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         # Pairwise Trajectories
         #
         for e in 1:num_pairs
-            (c1, c2, start_frame, end_frame) = pairs[:, e]
+            c1, c2, start_frame, end_frame = pairs[:, e]
             X1 = get_trajectory_from_frame(S, X, c1, start_frame, end_frame)
             X2 = get_trajectory_from_frame(S, X, c2, start_frame, end_frame)
 
             T = size(X1, 2)
             @assert T == size(X2, 2)
 
-#            data_likelihood!(PairwiseTrajectory, curr, X1, X2, log_b)
             data_likelihood!(PairwiseTrajectory, normals, X1, X2, log_b)
             log_like += forward_backward!(curr, T,
                     log_p0, log_P, log_b, log_α, log_β, γ)

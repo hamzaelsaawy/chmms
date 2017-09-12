@@ -24,8 +24,8 @@ traj_lengths(T::Trajectories) = diff(T.traj_ptr)
 end
 =#
 
-@inline function get_trajectory_from_ptr(id::Int,
-        X::Matrix{Float64}, traj_ptr::Vector{Int})
+@inline function get_trajectory_from_ptr(X::Matrix{Float64}, 
+        traj_ptr::Vector{Int}, id::Int)
     start_traj = traj_ptr[id]
     end_traj = traj_ptr[id + 1] - 1
 

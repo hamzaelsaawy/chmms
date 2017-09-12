@@ -141,7 +141,7 @@ end
 Find the vector `v` that best approximates `A` with `v*v'`
 `A` should be symmetric
 """
-@inline function estimate_outer_single(A::Matrix{<:Real})
+@inline function estimate_outer_single(A::AbstractMatrix{<:Real})
     # make symmetric
     A += A'
     l, v = eigs(A, nev=1)
@@ -156,7 +156,7 @@ end
 Find the vectors `u` and `v` that best approximates `A` with `u*v'`
 Answer is normalized to sum to one
 """
-@inline function estimate_outer_double(A::Matrix{<:Real})
+@inline function estimate_outer_double(A::AbstractMatrix{<:Real})
     F, _ = svds(A, nsv=1)
 
     return _clean_svd(F.U), _clean_svd(F.Vt)
