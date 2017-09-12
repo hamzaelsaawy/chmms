@@ -24,12 +24,13 @@ traj_lengths(T::Trajectories) = diff(T.traj_ptr)
 end
 =#
 
-@inline function get_trajectory_from_ptr(X::Matrix{Float64}, 
-        traj_ptr::Vector{Int}, id::Int)
-    start_traj = traj_ptr[id]
-    end_traj = traj_ptr[id + 1] - 1
+get_trajectory_range(traj_ptr::Vector{Int}, id::Int) =
+        ( traj_ptr[id] ) : ( traj_ptr[id + 1] - 1 )
 
-    return view(X, :, start_traj:end_traj)
+@inline function get_trajectory_from_ptr(X::Matrix{<:Real},
+        traj_ptr::Vector{Int}, id::Int)
+
+    return view(X, :, get_trajectory_range(traj_ptr, id))
 end
 
 @inline function get_trajectory_from_frame(S::SparseMatrixCSC, X::Matrix{Float64},
