@@ -3,7 +3,7 @@
 #
 
 ################################################################################
-# Convert to SparseMatrix
+# Convert to SparseMatrix (easier to use)
 ################################################################################
 
 const SparseTrajData = SparseMatrixCSC{AutomotiveDrivingModels.VehicleState, Int}

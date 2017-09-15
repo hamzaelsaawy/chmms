@@ -2,16 +2,13 @@
 # Main file for NGSIM-related code
 #
 
-import Distributions
-import StatsBase: wsample
-import Clustering: kmeans
-#import Base: @propagate_inbounds
+import JLD
+import CSV
 using AutomotiveDrivingModels
 using NGSIM
+using DataFrames
 
-include("auxiliary.jl")
-include("ngsim_data.jl")
 include("trajectories.jl")
-include("chmm_main.jl")
-include("chmm_training.jl")
+include("ngsim_data.jl")
+include("ngsim_export.jl")
 

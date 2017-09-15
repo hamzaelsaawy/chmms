@@ -33,6 +33,23 @@ get_trajectory_range(traj_ptr::Vector{Int}, id::Int) =
     return view(X, :, get_trajectory_range(traj_ptr, id))
 end
 
+@inline function get_pair_ranges(pairs::Matrix{Int}, id::Int)
+    s1, e1, s2, e2 = pairs[:, id]
+
+    return (s1:e1, s2:e2)
+end
+
+@inline function get_pair_from_ptr(X::Matrix{<:Real},
+        pairs::Matrix{Int}, id::Int)
+    r1, r2 = get_pair_ranges(pairs, id)
+
+    return view(X, :, r1), view(X, :, r2)
+end
+
+#########################################################################################
+# old functions, when i was using frames for pairs, and not index into X (S.nz)
+#########################################################################################
+
 @inline function get_trajectory_from_frame(S::SparseMatrixCSC, X::Matrix{Float64},
         c::Int, start_frame::Int, end_frame::Int)
     s = sp_sub2ind(S, start_frame, c)
