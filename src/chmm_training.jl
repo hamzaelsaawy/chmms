@@ -317,14 +317,14 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         conv_tol::Real=1e-3,
         print_every::Int=10)
     KK = K^2
-    traj_ptr = S.colptr
-    num_trajs = length(traj_ptr) - 1
+    trajptr = S.colptr
+    num_trajs = length(trajptr) - 1
     num_pairs = size(pairs, 2)
 
     log_p0 = log.(curr.π0)
     log_P = log.(curr.P)
 
-    T_max = maximum(diff(traj_ptr))
+    T_max = maximum(diff(trajptr))
 
     log_b = empty(KK, T_max)
     log_α = similar(log_b)
@@ -343,7 +343,7 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         # Single Trajectories 
         #
         for id in 1:num_trajs # all trajectories
-            Xt = get_trajectory_from_ptr(X, traj_ptr, id)
+            Xt = get_trajectory_from_ptr(X, trajptr, id)
             T = size(Xt, 2)
 
             data_likelihood!(SingleTrajectory, normals, Xt, log_b)

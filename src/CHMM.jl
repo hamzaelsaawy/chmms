@@ -10,4 +10,3 @@ include("auxiliary.jl")
 include("trajectories.jl")
 include("chmm_main.jl")
 include("chmm_training.jl")
-

@@ -5,32 +5,32 @@
 #=
 struct Trajectories
     X::Matrix{Float64} # D × number of observations
-    traj_ptr::Vector{Int} # see SparseMatrixCSC
+    trajptr::Vector{Int} # see SparseMatrixCSC
     traj_pairs::Vector{NTuple{2, Int}} # id of pairs
     traj_singles::Vector{Int} # id of single trajs
 end
 
 num_obs(T::Trajectories) = size(T.X, 2)
-num_trajs(T::Trajectories) = length(T.traj_ptr) - 1
+num_trajs(T::Trajectories) = length(T.trajptr) - 1
 num_pairs(T::Trajectories) = length(T.traj_pairs)
 num_singles(T::Trajectories) = length(T.traj_singles)
-traj_lengths(T::Trajectories) = diff(T.traj_ptr)
+traj_lengths(T::Trajectories) = diff(T.trajptr)
 
 @inline function get_trajectory(id::Int, T::Trajectories)
-    start_traj = T.traj_ptr[id]
-    end_traj = T.traj_ptr[id + 1] - 1
+    start_traj = T.trajptr[id]
+    end_traj = T.trajptr[id + 1] - 1
 
     return view(T.X, :, start_traj:end_traj)
 end
 =#
 
-get_trajectory_range(traj_ptr::Vector{Int}, id::Int) =
-        ( traj_ptr[id] ) : ( traj_ptr[id + 1] - 1 )
+get_trajectory_range(trajptr::Vector{Int}, id::Int) =
+        ( trajptr[id] ) : ( trajptr[id + 1] - 1 )
 
 @inline function get_trajectory_from_ptr(X::Matrix{<:Real},
-        traj_ptr::Vector{Int}, id::Int)
+        trajptr::Vector{Int}, id::Int)
 
-    return view(X, :, get_trajectory_range(traj_ptr, id))
+    return view(X, :, get_trajectory_range(trajptr, id))
 end
 
 @inline function get_pair_ranges(pairs::Matrix{Int}, id::Int)
@@ -44,18 +44,6 @@ end
     r1, r2 = get_pair_ranges(pairs, id)
 
     return view(X, :, r1), view(X, :, r2)
-end
-
-#########################################################################################
-# old functions, when i was using frames for pairs, and not index into X (S.nz)
-#########################################################################################
-
-@inline function get_trajectory_from_frame(S::SparseMatrixCSC, X::Matrix{Float64},
-        c::Int, start_frame::Int, end_frame::Int)
-    s = sp_sub2ind(S, start_frame, c)
-    e = sp_sub2ind(S, end_frame, c)
-
-    return view(X, :, s:e)
 end
 
 # stolen from julia/base/sparse/sparsematrix.jl

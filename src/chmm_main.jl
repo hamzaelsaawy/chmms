@@ -81,8 +81,8 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
 
     X = empty(model.D, num_obs)
     Z = empty(Int, num_obs)
-    traj_ptr = empty(Int, N_trajs + 1)
-    traj_ptr[1] = 1
+    trajptr = empty(Int, N_trajs + 1)
+    trajptr[1] = 1
     traj_pairs = Vector{NTuple{2, Int}}(N_pairs)
 
     idx = 1
@@ -107,15 +107,15 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
         X[:, start_2:end_2] = X2
 
         # start of each traj
-        traj_ptr[id2] = start_2
+        trajptr[id2] = start_2
         # edge case for last entry
-        traj_ptr[id2+1] = end_2 + 1
+        trajptr[id2+1] = end_2 + 1
         # record the pairs
         traj_pairs[n] = (id1, id2)
 
         idx = end_2 + 1
     end
 
-    return (X, Z, traj_ptr, traj_pairs)
+    return (X, Z, trajptr, traj_pairs)
 end
 
