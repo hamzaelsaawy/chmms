@@ -117,7 +117,7 @@ function forward_backward!(
 
     for t in 2:T
         for j in 1:KK
-            temp[:] = log_α[:, t-1]
+            temp[:] = log_α[:, t - 1]
             temp .+= log_P[j, :]
             log_α[j, t] = logsumexp(temp) + log_b[j, t]
         end
@@ -129,11 +129,11 @@ function forward_backward!(
     # temp[j] = log_A[i, j] + log_β[j, t+1] + log_b[j, t+1]
     log_β[:, T] = 0
 
-    for t in (T-1):-1:1
+    for t in (T - 1):-1:1
         for i in 1:KK
-            temp[:] = log_b[:, t+1]
+            temp[:] = log_b[:, t + 1]
             temp .+= log_P[:, i]
-            temp .+= log_β[:, t+1]
+            temp .+= log_β[:, t + 1]
             log_β[i, t] = logsumexp(temp)
         end
     end
@@ -182,11 +182,11 @@ function _update_suff_stats!(
     # P
     #
     temp2 = similar(suff.P_flat)
-    for t in 1:(T-1)
+    for t in 1:(T - 1)
         temp2[:] = log_P
         temp2 .+= log_α[:, t]'
-        temp2 .+= log_b[:, t+1]
-        temp2 .+= log_β[:, t+1]
+        temp2 .+= log_b[:, t + 1]
+        temp2 .+= log_β[:, t + 1]
         temp2 .-= logsumexp(temp2)
         suff.P_flat .+= exp.(temp2)
     end
@@ -207,7 +207,7 @@ function update_suff_stats!(traj_type::Type{SingleTrajectory},
         log_b::Matrix{Float64},
         log_α::Matrix{Float64},
         log_β::Matrix{Float64},
-        γ::Matrix{Float64} )
+        γ::Matrix{Float64})
     K = length(suff.counts_K)
     T = size(X, 2)
 
@@ -308,16 +308,18 @@ end
 #
 # EM
 #
-function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
-        K::Int,
+function chmm_em!(
         curr::Chmm,
-        suff::ChmmSuffStats;
+        suff::ChmmSuffStats,
+        X::Matrix{Float64},
+        trajptr::Vector{Int},
+        pairs::Matrix{Int};
         N_iters::Int=50,
+        conv_tol::Real=1e-2,
         verbose::Bool=true,
-        conv_tol::Real=1e-3,
         print_every::Int=10)
+    K = curr.K
     KK = K^2
-    trajptr = S.colptr
     num_trajs = length(trajptr) - 1
     num_pairs = size(pairs, 2)
 
@@ -331,23 +333,23 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
     log_β = similar(log_b)
     γ = similar(log_b)
 
-    log_like_hist = fill(NaN, N_iters)
+    loglike_hist = fill(NaN, N_iters)
 
     for iter in 1:N_iters
-        log_like = 0.0
+        loglike = 0.0
         zero!(suff)
 
-        normals = [ MvNormal(curr.μs[i], curr.Σs[i]) for i in 1:K ]
+        normals = [MvNormal(curr.μs[i], curr.Σs[i]) for i in 1:K]
 
         #
-        # Single Trajectories 
+        # Single Trajectories
         #
         for id in 1:num_trajs # all trajectories
             Xt = get_trajectory_from_ptr(X, trajptr, id)
             T = size(Xt, 2)
 
             data_likelihood!(SingleTrajectory, normals, Xt, log_b)
-            log_like += forward_backward!(curr, T,
+            loglike += forward_backward!(curr, T,
                     log_p0, log_P, log_b, log_α, log_β, γ)
             update_suff_stats!(SingleTrajectory, suff, Xt,
                     log_p0, log_P, log_b, log_α, log_β, γ)
@@ -356,16 +358,13 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         #
         # Pairwise Trajectories
         #
-        for e in 1:num_pairs
-            c1, c2, start_frame, end_frame = pairs[:, e]
-            X1 = get_trajectory_from_frame(S, X, c1, start_frame, end_frame)
-            X2 = get_trajectory_from_frame(S, X, c2, start_frame, end_frame)
-
+        for id in 1:num_pairs
+            X1, X2 = get_pair_from_ptr(X, pairs, id)
             T = size(X1, 2)
             @assert T == size(X2, 2)
 
             data_likelihood!(PairwiseTrajectory, normals, X1, X2, log_b)
-            log_like += forward_backward!(curr, T,
+            loglike += forward_backward!(curr, T,
                     log_p0, log_P, log_b, log_α, log_β, γ)
             update_suff_stats!(PairwiseTrajectory, suff, X1, X2,
                     log_p0, log_P, log_b, log_α, log_β, γ)
@@ -376,15 +375,15 @@ function chmm_em!(S::SparseMatrixCSC, X::Matrix{Float64}, pairs::Matrix{Int},
         #
         update_parameter_estimates!(curr, suff, log_p0, log_P)
 
-        log_like_hist[iter] = log_like
+        loglike_hist[iter] = loglike
         verbose && (iter % print_every == 0) &&
-                @printf("iteration %6d:  %.3f\n", iter, log_like)
+                @printf("iteration %6d:  %.3f\n", iter, loglike)
 
-        if (iter ≥ 2) && (abs(log_like_hist[iter] - log_like_hist[iter - 1]) ≤ conv_tol)
+        if (iter ≥ 2) && (abs(loglike_hist[iter] - loglike_hist[iter - 1]) ≤ conv_tol)
             break
         end
     end
 
-    return curr, log_like_hist
+    return curr, loglike_hist
 end
 

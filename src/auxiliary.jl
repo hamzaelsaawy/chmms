@@ -61,7 +61,7 @@ end
 #   # A is unchanged
 square_view(A::Array, K::Int, inds...) = reshape(view(A, inds...), K, K)
 
-outer(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = v*w'
+outer(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = v * w'
 
 """
     outer!(A::AbstractVector{<:Real},
@@ -86,7 +86,7 @@ function outer!(A::AbstractMatrix{<:Real},
 end
 
 # go from dist over P(s₁' | s₁, s₂) to P((s₁', s₂'), (s₁, s₂))
-@inline function make_flat(P::Array{Float64, 3})
+@inline function make_flat(P::Array{Float64,3})
     K = size(P, 1)
     KK = K^2
 
@@ -147,7 +147,7 @@ Find the vector `v` that best approximates `A` with `v*v'`
     l, v = eigs(A, nev=1)
 
     # divide by 2 b/c of adding A to its self (its transpose actually)
-    return sqrt.(first(l)/2) * abs.(vec(v))
+    return sqrt.(first(l) / 2) * abs.(vec(v))
 end
 
 """

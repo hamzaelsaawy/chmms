@@ -2,7 +2,7 @@
 # Main file for CHMM-related code
 #
 
-import Distributions
+import Distributions: MvNormal, logpdf
 import StatsBase: wsample
 import Clustering: kmeans
 

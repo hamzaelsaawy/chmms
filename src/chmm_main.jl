@@ -7,7 +7,7 @@ struct Chmm
     D::Int
 
     π0::Vector{Float64}
-    P::Array{Float64, 2} # switching to full (K×K) × (K×K) from (K×K×K)
+    P::Array{Float64,2} # switching to full (K×K) × (K×K) from (K×K×K)
     μs::Vector{Vector{Float64}}
     Σs::Vector{Matrix{Float64}}
 end
@@ -83,7 +83,7 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
     Z = empty(Int, num_obs)
     trajptr = empty(Int, N_trajs + 1)
     trajptr[1] = 1
-    traj_pairs = Vector{NTuple{2, Int}}(N_pairs)
+    traj_pairs = Vector{NTuple{2,Int}}(N_pairs)
 
     idx = 1
     # concatenate all the data into a single stream
@@ -109,7 +109,7 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
         # start of each traj
         trajptr[id2] = start_2
         # edge case for last entry
-        trajptr[id2+1] = end_2 + 1
+        trajptr[id2 + 1] = end_2 + 1
         # record the pairs
         traj_pairs[n] = (id1, id2)
 

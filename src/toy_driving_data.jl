@@ -2,6 +2,7 @@
 # Generate 1d Driving Data
 #
 using AutomotiveDrivingModels
+include("trajectories.jl")
 
 """
     gen_simple_traj(; road_length::Int=1200, max_starting_pos::Int=400,
@@ -35,8 +36,7 @@ function gen_simple_traj(;
 
     for i in 2:n_cars
         s = rand() * (max_starting_pos - vd.length)
-#        floor(rand() * (max_starting_pos - vd.length) / vd.length + 1) * vd.length
-        v = avg_v + randn() * std_v
+        v = avg_v + rand() * std_v
         state = State1D(s, v)
         push!(scene, Entity(State1D(s, v), vd, i))
         models[i] = IntelligentDriverModel(v_des=(avg_v + randn()*std_v))
@@ -59,3 +59,76 @@ function gen_simple_traj(;
     return D
 end
 
+function gen_mult_trajs(n_scenes::Int=500;
+        timestep::Float64=0.1,
+        road_lengths::AbstractVector=1_000:1_500,
+        n_cars::AbstractVector=3:6)
+    scenes = [gen_simple_traj(road_length=rand(road_lengths), n_cars=rand(n_cars))
+            for _ in 1:n_scenes]
+    n_obs = sum(prod(size(s, 1, 2)) for s in scenes)
+    n_trajs = sum(size(s, 1) for s in scenes)
+
+    X = zeros(3, n_obs)
+    trajptr = zeros(Int, n_trajs+1)
+
+    loc_X = 0
+    loc_traj = 1
+    for s in scenes
+        n_cars, T, _ = size(s)
+
+        for c in 1:n_cars
+            r = loc_X + (1:T)
+            X[1:2, r] = s[c, :, :]'
+
+            trajptr[loc_traj] = first(r)
+            trajptr[loc_traj+1] = last(r)
+
+            loc_X += T
+            loc_traj += 1
+        end
+    end
+    trajptr[end] += 1
+
+    n_pairs = sum(choose2(size(s, 1)) for s in scenes)
+    pairs = zeros(Int, 4, n_pairs)
+
+    loc_pairs = 1
+    loc_traj = 1
+    for s in scenes
+        n_cars = size(s, 1)
+        ptrs = trajptr[loc_traj + (0:n_cars)]
+        rs = map(colon, ptrs[1:(end-1)], ptrs[2:end].-1)
+
+        for i in 1:n_cars
+            for j in 1:(i-1)
+                pairs[1, loc_pairs] = first(rs[i])
+                pairs[2, loc_pairs] = last(rs[i])
+                pairs[3, loc_pairs] = first(rs[j])
+                pairs[4, loc_pairs] = last(rs[j])
+
+                loc_pairs += 1
+            end
+        end
+
+        loc_traj += n_cars
+    end
+
+    Δt = timestep
+    for i in 1:n_trajs
+        r = get_trajectory_range(trajptr, i)
+        T = length(r)
+        Vt = view(X, 2, r)
+        At = view(X, 3, r)
+
+        # forward diff, Δₕ x
+        At[1] = (Vt[2] - Vt[1]) / Δt
+        # central diff, δₕ x
+        At[2:(T - 1)] = (Vt[3:T] .- Vt[1:(T - 2)]) ./ (2 * Δt)
+        # backward diff, ∇ₕ
+        At[T] = (Vt[T] - Vt[T - 1]) / Δt
+    end
+
+    return X, trajptr, pairs
+end
+
+choose2(n::Int) = n*(n-1)/2

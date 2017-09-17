@@ -24,7 +24,7 @@ Might need to run`NGSIM.convert_raw_ngsim_to_trajdatas()` first.
 function export_ngsim_trajdata(traj_num::Int, data_path::AbstractString="../data")
     traj_file = Base.Filesystem.basename(NGSIM.TRAJDATA_PATHS[traj_num])
     # remove the "trajectory_" and ".csv"
-    traj_file = traj_file[10:search(traj_file, '.')-1]
+    traj_file = traj_file[10:search(traj_file, '.') - 1]
     data_path = joinpath(data_path, traj_file)
 
     if isdir(data_path)
@@ -87,9 +87,9 @@ function export_ngsim_trajdata(traj_num::Int, data_path::AbstractString="../data
         # forward diff, Δₕ x
         At[1] = (Vt[2] - Vt[1]) / Δt
         # central diff, δₕ x
-        At[2:(T-1)] = (Vt[3:T] .- Vt[1:(T-2)]) ./ (2*Δt)
+        At[2:(T - 1)] = (Vt[3:T] .- Vt[1:(T - 2)]) ./ (2 * Δt)
         # backward diff, ∇ₕ
-        At[T] = (Vt[T] - Vt[T-1]) / Δt
+        At[T] = (Vt[T] - Vt[T - 1]) / Δt
     end
 
     df[:acceleration] = A
@@ -111,7 +111,7 @@ function export_ngsim_trajdata(traj_num::Int, data_path::AbstractString="../data
     info("Saving trajectory pointer to `time_step.csv`.")
 
     pair_traj = find_pairs(TS)
-    pairs = DataFrame([Int, Int, Int, Int], 
+    pairs = DataFrame([Int, Int, Int, Int],
             [:start1, :end1, :start2, :end2], length(pair_traj))
     for (e, ((c1, c2), (start_frame, end_frame))) in enumerate(pair_traj)
         pairs[e, :start1] = sp_sub2ind(TS, start_frame, c1)
