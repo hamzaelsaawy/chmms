@@ -11,7 +11,7 @@ empty(T::Type, dims::Int...) = Array{T}(dims...)
 empty(dims::Int...) = empty(Float64, dims...)
 
 # a bit of overkill really with these guys
-const ϵ = 1e-30 # << eps(1.0), so only numbers ≈ 0 will be affected
+const ϵ = 1e-18 # << eps(1.0), so only numbers ≈ 0 will be affected
 const log_ϵ = -1_000_000.0
 const ϵI = UniformScaling(ϵ)
 
@@ -32,7 +32,7 @@ end
 """
 Reverse an index corresponding to (i, j) to index of (j, i)
 """
-rev_ind(idx::Int, K::Int) = sub2ind((K, K), reverse(ind2sub((K, K), idx))...)
+reverse_ind(idx::Int, K::Int) = sub2ind((K, K), reverse(ind2sub((K, K), idx))...)
 
 
 """

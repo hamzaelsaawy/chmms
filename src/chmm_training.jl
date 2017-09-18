@@ -14,6 +14,7 @@ struct ChmmSuffStats
     P_flat::Matrix{Float64}
     p0_flat::Vector{Float64}
     counts_K::Vector{Float64}
+    # counts of being in any of the (K×K). Not sure whats is used for
     counts_KK::Vector{Float64}
     ms::Vector{Vector{Float64}}
     Ss::Vector{Matrix{Float64}}
@@ -160,6 +161,7 @@ observed_states(::Type{SingleTrajectory}, x::Vector{<:Real}, K::Int) = single_co
 observed_states(::Type{PairwiseTrajectory}, x::Vector{<:Real}, K::Int) = pair_counts(x, K)
 
 # shared code between pairwise and single trajs
+#  mostly counts of being in each state and tranistions
 function _update_suff_stats!(
         traj_type::Type{<:TrajectoryType},
         suff::ChmmSuffStats,
@@ -284,6 +286,18 @@ function update_parameter_estimates!(
     KK = length(suff.counts_KK)
 
     suff.P_flat .+= ϵ
+    # enforce the condition that P((i,j), (l,m)) = P((j,i), (m,l))
+    # ideally also factor each P[:, i] into outer products, but ...
+    for k1 in 1:KK
+        k1′ = reverse_ind(k1, K)
+
+        for k2 in 1:KK
+            k2′ = reverse_ind(k1, K)
+
+            suff.P_flat[k2′, k1′] += suff.P_flat[k2, k1]
+        end
+    end
+
     map!(identity, curr.P, suff.P_flat)
     curr.P ./= sum(curr.P, 1)
     map!(log, log_P, curr.P)
@@ -302,6 +316,7 @@ function update_parameter_estimates!(
         # enforce symmetry
         curr.Σs[k] .+= curr.Σs[k]'
         curr.Σs[k] ./= 2
+        curr.Σs[k] += ϵI
     end
 end
 
