@@ -46,18 +46,23 @@ function gen_simple_traj(;
     rec = QueueRecord(Vehicle1D, n_ticks, timestep)
     simulate!(LaneFollowingAccel, rec, scene, roadway, models, n_ticks)
 
-    D = Array{Float64}(n_cars, n_ticks, 2)
+    X = Array{Float64}(n_cars, n_ticks, 3)
 
     for t in 1:n_ticks
         f = rec.frames[n_ticks - t + 1]
         for c in 1:scene.n
             s = f.entities[c].state
-            D[c, t, 1] = s.s
-            D[c, t, 2] = s.v
+            X[c, t, 1] = s.s
+            X[c, t, 2] = s.v
         end
     end
 
-    return D
+    D = X[:, :, 1]
+    for c in 1:n_cars
+        X[c, :, 3] = minimum(abs.(D[1:end .≠ c, :] .- D[c, :]'), 1)
+    end
+
+    return X
 end
 
 function gen_mult_trajs(n_scenes::Integer=500;
@@ -76,7 +81,8 @@ function gen_mult_trajs(n_scenes::Integer=500;
     n_obs = sum(prod(size(s, 1, 2)) for s in scenes)
     n_trajs = sum(size(s, 1) for s in scenes)
 
-    X = zeros(3, n_obs)
+    D = size(scenes[1], 3)
+    X = zeros( D+ 1, n_obs)
     trajptr = zeros(Int, n_trajs + 1)
 
     loc_X = 0
@@ -86,7 +92,7 @@ function gen_mult_trajs(n_scenes::Integer=500;
 
         for c in 1:n_cars
             r = loc_X + (1:T)
-            X[1:2, r] = s[c, :, :]'
+            X[1:D, r] = s[c, :, :]'
 
             trajptr[loc_traj] = first(r)
             trajptr[loc_traj + 1] = last(r)
@@ -126,7 +132,7 @@ function gen_mult_trajs(n_scenes::Integer=500;
         r = get_trajectory_range(trajptr, i)
         T = length(r)
         Vt = view(X, 2, r)
-        At = view(X, 3, r)
+        At = view(X, D + 1, r)
 
         # forward diff, Δₕ x
         At[1] = (Vt[2] - Vt[1]) / Δt

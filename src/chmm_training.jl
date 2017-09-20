@@ -316,7 +316,7 @@ function update_parameter_estimates!(
         # enforce symmetry
         curr.Σs[k] .+= curr.Σs[k]'
         curr.Σs[k] ./= 2
-        curr.Σs[k] += ϵI
+        curr.Σs[k] += ϵI # prevent zeros along the diagonal
     end
 end
 
@@ -353,8 +353,7 @@ function chmm_em!(
     for iter in 1:N_iters
         loglike = 0.0
         zero!(suff)
-
-        normals = [MvNormal(curr.μs[i], curr.Σs[i]) for i in 1:K]
+        normals = gen_normals(curr)
 
         #
         # Single Trajectories
@@ -402,3 +401,22 @@ function chmm_em!(
     return curr, loglike_hist
 end
 
+# stats.stackexchange.com/questions/219302/singularity-issues-in-gaussian-mixture-model
+function gen_normals(curr::Chmm;
+        collapse_tol::Real=1e-10,
+        scaling::Real=1_000)
+    K = curr.K
+    D = curr.D
+    normals = Vector{MvNormal}(K)
+
+    for i in 1:K
+        # gausian is collapsing
+        if !isposdef(curr.Σs[i]) || (det(curr.Σs[i]) ≤ collapse_tol)
+            curr.Σs[i][:] = eye(D) * scaling
+            curr.μs[i] .+= randn(D) * scaling
+        end
+        normals[i] = MvNormal(curr.μs[i], curr.Σs[i])
+    end
+
+    return normals
+end
