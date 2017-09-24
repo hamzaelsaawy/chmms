@@ -21,7 +21,7 @@ function gen_simple_traj(;
         avg_v::Real=10.0, # [m/s]
         std_v::Real=1.0,
         min_v::Real=3.0,
-        n_ticks::Integer=floor(Int, (road_length-max_starting_pos) / avg_v / timestep),
+        n_ticks::Integer=floor(Int, (road_length - max_starting_pos) / avg_v / timestep),
     )
     # cars can overlap ... oh well
 

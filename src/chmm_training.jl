@@ -11,11 +11,11 @@ struct SingleTrajectory <: TrajectoryType end
 Sufficient statstics for a trajectory
 """
 struct ChmmSuffStats
-    P_flat::Matrix{Float64}
-    p0_flat::Vector{Float64}
     counts_K::Vector{Float64}
-    # counts of being in any of the (K×K). Not sure whats is used for
+    # counts of being in any of the (K×K) states. Not sure whats is used for
     counts_KK::Vector{Float64}
+    p0_flat::Vector{Float64}
+    P_flat::Array{Float64, 3}
     ms::Vector{Vector{Float64}}
     Ss::Vector{Matrix{Float64}}
 end
@@ -25,21 +25,22 @@ function ChmmSuffStats(model::Chmm)
     D = model.D
     KK = K^2
 
-    P_flat = zeros(KK, KK)
-    p0_flat = zeros(KK)
     counts_K = zeros(K)
     counts_KK = zeros(KK)
+    p0_flat = zeros(K)
+    P_flat = zeros(K, K, K)
+
     ms = [zeros(D) for _ in 1:K]
     Ss = [zeros(D, D) for _ in 1:K]
 
-    return ChmmSuffStats(P_flat, p0_flat, counts_K, counts_KK, ms, Ss)
+    return ChmmSuffStats(counts_K, counts_KK, p0_flat, P_flat, ms, Ss)
 end
 
 function zero!(suff::ChmmSuffStats)
-    fill!(suff.P_flat, 0)
-    fill!(suff.p0_flat, 0)
     fill!(suff.counts_K, 0)
     fill!(suff.counts_KK, 0)
+    fill!(suff.p0_flat, 0)
+    fill!(suff.P_flat, 0)
 
     for k in 1:K
         fill!(suff.ms[k], 0)
@@ -286,24 +287,29 @@ function update_parameter_estimates!(
     KK = length(suff.counts_KK)
 
     suff.P_flat .+= ϵ
-    # enforce the condition that P((i,j), (l,m)) = P((j,i), (m,l))
-    # ideally also factor each P[:, i] into outer products, but ...
-    for k1 in 1:KK
-        k1′ = reverse_ind(k1, K)
+    fill!(curr.P, 0)
 
-        for k2 in 1:KK
-            k2′ = reverse_ind(k1, K)
+    for i in 1:K
+        for j in 1:i
+            k1 = sub2ind((K, K), i, j)
+            k2 = sub2ind((K, K), j, i)
 
-            suff.P_flat[k2′, k1′] += suff.P_flat[k2, k1]
+            p1 = reshape(suff.P_flat[:, k1], K, K)
+            p2 = reshape(suff.P_flat[:, k2], K, K)
+
+            curr.P[:, i, j] .+= vec(sum(p1, 2))
+            curr.P[:, i, j] .+= vec(sum(p2, 1))
+
+            curr.P[:, j, i] .+= vec(sum(p1, 1))
+            curr.P[:, j, i] .+= vec(sum(p2, 2))
         end
     end
-
-    map!(identity, curr.P, suff.P_flat)
     curr.P ./= sum(curr.P, 1)
-    map!(log, log_P, curr.P)
+    make_flat!(log_P, curr.P)
+    map!(log, log_P, log_P)
 
     suff.p0_flat .+= ϵ
-    map!(identity, curr.π0, suff.p0_flat)
+    pair_counts!(curr.π0, suff.p0_flat, K)
     curr.π0 ./= sum(curr.π0)
     map!(log, log_p0, curr.π0)
 
@@ -338,8 +344,8 @@ function chmm_em!(
     num_trajs = length(trajptr) - 1
     num_pairs = size(pairs, 2)
 
-    log_p0 = log.(curr.π0)
-    log_P = log.(curr.P)
+    log_p0 = log.(outer(curr.π0))
+    log_P = log.(make_flat(curr.P))
 
     T_max = maximum(diff(trajptr))
 

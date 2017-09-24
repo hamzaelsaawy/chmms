@@ -15,8 +15,6 @@ const ϵ = 1e-18 # << eps(1.0), so only numbers ≈ 0 will be affected
 const log_ϵ = -1_000_000.0
 const ϵI = UniformScaling(ϵ)
 
-const log2π = float(Distributions.log2π)
-
 @inline function sanitize_log!(A::AbstractArray{<:Real}, log_ϵ::Real=log_ϵ)
     @inbounds for i in 1:length(A)
         !isfinite(A[i]) && (A[i] = log_ϵ)
@@ -86,13 +84,13 @@ function outer!(A::AbstractMatrix{<:Real},
 end
 
 # go from dist over P(s₁' | s₁, s₂) to P((s₁', s₂'), (s₁, s₂))
-@inline function make_flat(P::Array{Float64,3})
+@inline function make_flat!(P_flat::Matrix{Float64}, P::Array{Float64,3})
     K = size(P, 1)
     KK = K^2
 
     @assert K == size(P, 2) == size(P, 3)
+    @assert KK == size(P_flat, 1) == size(P_flat, 2)
 
-    P_flat = empty(KK, KK)
     for k in 1:KK
         i, j = ind2sub((K, K), k)
         outer!(square_view(P_flat, K, :, k), P[:, i, j], P[:, j, i])
@@ -100,6 +98,8 @@ end
 
     return P_flat
 end
+
+make_flat(P::Array{Float64, 3}) = make_flat!(empty(KK, KK), P)
 
 """
     single_counts(x::Vector, K::Int)
@@ -119,11 +119,12 @@ end
 Return the counts of states in [1, K] for observations in [1, K²], if observations from
 both are being incorperated (i.e. pairwise data).
 
-Same as `sum(A + A', 1)/2` where `A = reshape(x, K, K)`
+Same as `sum(A + A', 1)` where `A = reshape(x, K, K)`
 """
-@inline function pair_counts(x::AbstractVector{<:Real}, K::Int)
+pair_counts(x::AbstractVector{<:Real}, K::Int) = pair_counts!(zeros(K), x, K)
+
+@inline function pair_counts!(y::Vector{Float64}, x::AbstractVector{<:Real}, K::Int)
     A = reshape(x, K, K)
-    y = zeros(K)
 
     for i in 1:K
         for j in 1:K

@@ -6,8 +6,8 @@ struct Chmm
     K::Int # number states
     D::Int
 
-    π0::Vector{Float64}
-    P::Array{Float64,2} # switching to full (K×K) × (K×K) from (K×K×K)
+    π0::Vector{Float64} # K elements (not K²)
+    P::Array{Float64,2} # the K×K×K (factored) dist
     μs::Vector{Vector{Float64}}
     Σs::Vector{Matrix{Float64}}
 end
@@ -29,7 +29,7 @@ function chmm_from_data(X::Matrix{<:Real}, K::Int;
     P = rand(K, K, K)
     P ./= sum(P, 1)
 
-    return Chmm(K, D, vec(outer(p0)), make_flat(P), ms, Ss)
+    return Chmm(K, D, p0, P, ms, Ss)
 end
 
 function rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
@@ -44,7 +44,7 @@ function rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
     μs = [randn(D) * μ_scale for _ in 1:K]
     Σs = [eye(D) * rand() * Σ_scale for _ in 1:K]
 
-    return Chmm(K, D, vec(outer(π0)), make_flat(P), μs, Σs)
+    return Chmm(K, D, π0, P, μs, Σs)
 end
 
 function simulate_model(model::Chmm, T::Int=500)
@@ -57,12 +57,11 @@ function simulate_model(model::Chmm, T::Int=500)
     X2 = similar(X1)
 
     sqrtm_Σs = map(sqrtm, model.Σs)
-    w = wsample(1:KK, model.π0)
-    z1, z2 = ind2sub((K, K), w)
+    z = wsample(1:K, model.π0, 2)
 
     for t in 1:T
-        w = wsample(1:KK, model.P[:, w])
-        z1, z2 = ind2sub((K, K), w)
+        z1 = wsample(1:K, model.P[:, z...])
+        z2 = wsample(1:K, model.P[:, reverse(z)...])
 
         Z[:, t] = [z1, z2]
         X1[:, t] = sqrtm_Σs[z1] * randn(D) + model.μs[z1]
