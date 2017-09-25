@@ -4,5 +4,6 @@ img
 data
 
 *.swp
+*.swo
 
 *.jld

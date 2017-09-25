@@ -5,9 +5,8 @@
 struct Chmm
     K::Int # number states
     D::Int
-
     π0::Vector{Float64} # K elements (not K²)
-    P::Array{Float64,2} # the K×K×K (factored) dist
+    P::Array{Float64,3} # the K×K×K (factored) distribution
     μs::Vector{Vector{Float64}}
     Σs::Vector{Matrix{Float64}}
 end

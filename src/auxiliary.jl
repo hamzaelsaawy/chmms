@@ -30,7 +30,7 @@ end
 """
 Reverse an index corresponding to (i, j) to index of (j, i)
 """
-reverse_ind(idx::Int, K::Int) = sub2ind((K, K), reverse(ind2sub((K, K), idx))...)
+reverse_ind(K::Int, idx::Int) = sub2ind((K, K), reverse(ind2sub((K, K), idx))...)
 
 
 """
@@ -99,7 +99,12 @@ end
     return P_flat
 end
 
-make_flat(P::Array{Float64, 3}) = make_flat!(empty(KK, KK), P)
+@inline function make_flat(P::Array{Float64, 3})
+    K = size(P, 1)
+    KK = K^2
+
+    return make_flat!(empty(KK, KK), P)
+end
 
 """
     single_counts(x::Vector, K::Int)
@@ -135,6 +140,11 @@ pair_counts(x::AbstractVector{<:Real}, K::Int) = pair_counts!(zeros(K), x, K)
 
     return y
 end
+
+#
+# USELESS???
+#
+
 
 """
     estimate_outer_single(A)

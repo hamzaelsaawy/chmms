@@ -12,10 +12,10 @@ Sufficient statstics for a trajectory
 """
 struct ChmmSuffStats
     counts_K::Vector{Float64}
-    # counts of being in any of the (K×K) states. Not sure whats is used for
+    # counts of being in any of the (K×K) states. Not sure whats is used for …
     counts_KK::Vector{Float64}
     p0_flat::Vector{Float64}
-    P_flat::Array{Float64, 3}
+    P_flat::Array{Float64,2}
     ms::Vector{Vector{Float64}}
     Ss::Vector{Matrix{Float64}}
 end
@@ -27,8 +27,9 @@ function ChmmSuffStats(model::Chmm)
 
     counts_K = zeros(K)
     counts_KK = zeros(KK)
-    p0_flat = zeros(K)
-    P_flat = zeros(K, K, K)
+
+    p0_flat = zeros(KK)
+    P_flat = zeros(KK, KK)
 
     ms = [zeros(D) for _ in 1:K]
     Ss = [zeros(D, D) for _ in 1:K]
@@ -286,11 +287,14 @@ function update_parameter_estimates!(
     K = length(suff.counts_K)
     KK = length(suff.counts_KK)
 
+    #
+    # P
+    #
     suff.P_flat .+= ϵ
     fill!(curr.P, 0)
-
+    # decompose P_flat (K²×K²) into K×K×K
     for i in 1:K
-        for j in 1:i
+        for j in 1:K
             k1 = sub2ind((K, K), i, j)
             k2 = sub2ind((K, K), j, i)
 
@@ -299,20 +303,25 @@ function update_parameter_estimates!(
 
             curr.P[:, i, j] .+= vec(sum(p1, 2))
             curr.P[:, i, j] .+= vec(sum(p2, 1))
-
-            curr.P[:, j, i] .+= vec(sum(p1, 1))
-            curr.P[:, j, i] .+= vec(sum(p2, 2))
         end
     end
     curr.P ./= sum(curr.P, 1)
+
     make_flat!(log_P, curr.P)
     map!(log, log_P, log_P)
 
+    #
+    # π₀
+    #
     suff.p0_flat .+= ϵ
     pair_counts!(curr.π0, suff.p0_flat, K)
     curr.π0 ./= sum(curr.π0)
+
     map!(log, log_p0, curr.π0)
 
+    #
+    # μ & Σ
+    #
     suff.counts_K .+= ϵ
     for k in 1:K
         curr.μs[k][:] = suff.ms[k] ./ (suff.counts_K[k])
@@ -344,7 +353,7 @@ function chmm_em!(
     num_trajs = length(trajptr) - 1
     num_pairs = size(pairs, 2)
 
-    log_p0 = log.(outer(curr.π0))
+    log_p0 = log.(vec(outer(curr.π0)))
     log_P = log.(make_flat(curr.P))
 
     T_max = maximum(diff(trajptr))
@@ -426,3 +435,4 @@ function gen_normals(curr::Chmm;
 
     return normals
 end
+
