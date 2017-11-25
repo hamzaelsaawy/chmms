@@ -11,4 +11,3 @@ using DataFrames
 include("trajectories.jl")
 include("ngsim_data.jl")
 include("ngsim_export.jl")
-

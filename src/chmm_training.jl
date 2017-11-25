@@ -1,11 +1,18 @@
 #
 # CHMM EM training
 #
+# Data is stored a manner (slightly) reminiscent of `SparseMatrixCSC`
+# X ∈ ℝᴰˣᴺ, where D is the dimesnionality of the observations and N is the number of
+# total observations (in the single and pairwise datasets both). Trajectories
+# are stores sequentially, and the `trajptr` vector functions exactly like `colptr`
+# in a `SparseMatrixCSC`: sequential values demarcate the start of successive trajectories.
+# The `pairs` matrix stores the start and end of a pairwise trajectory as each row:
+# `pairs[:, i] = [s₁, e₁, s₂, e₂]`, where `s` and `e` are the start and end of a trajectory
 
-# wholly unnecessary and pointlessly complicated
-abstract type TrajectoryType end
-struct PairwiseTrajectory <: TrajectoryType end
-struct SingleTrajectory <: TrajectoryType end
+export
+    ChmmSuffStats,
+    zero!,
+    chmm_em!
 
 """
 Sufficient statstics for a trajectory
@@ -43,7 +50,7 @@ function zero!(suff::ChmmSuffStats)
     fill!(suff.p0_flat, 0)
     fill!(suff.P_flat, 0)
 
-    for k in 1:K
+    for k in 1:length(suff.counts_K)
         fill!(suff.ms[k], 0)
         fill!(suff.Ss[k], 0)
     end
@@ -356,7 +363,7 @@ function chmm_em!(
     log_p0 = log.(vec(outer(curr.π0)))
     log_P = log.(make_flat(curr.P))
 
-    T_max = maximum(diff(trajptr))
+    T_max = ( length(trajptr) == 1 ) ? maximum(diff(pairs[1:2, :])) + 1 : maximum(diff(trajptr))
 
     log_b = empty(KK, T_max)
     log_α = similar(log_b)
@@ -419,7 +426,7 @@ end
 # stats.stackexchange.com/questions/219302/singularity-issues-in-gaussian-mixture-model
 function gen_normals(curr::Chmm;
         collapse_tol::Real=1e-10,
-        scaling::Real=1_000)
+        scaling::Real=10)
     K = curr.K
     D = curr.D
     normals = Vector{MvNormal}(K)
@@ -435,4 +442,3 @@ function gen_normals(curr::Chmm;
 
     return normals
 end
-

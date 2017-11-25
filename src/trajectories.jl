@@ -2,6 +2,12 @@
 # Trajectories and functions to deal with them
 #
 
+# wholly unnecessary and pointlessly complicated
+abstract type TrajectoryType end
+struct PairwiseTrajectory <: TrajectoryType end
+struct SingleTrajectory <: TrajectoryType end
+
+
 get_trajectory_range(trajptr::Vector{Int}, id::Int) =
         ( trajptr[id] ) : ( trajptr[id + 1] - 1 )
 
@@ -36,4 +42,3 @@ end
     r1 = searchsortedfirst(A.rowval, r, r1, r2, Base.Order.Forward)
     ((r1 > r2) || (A.rowval[r1] != r)) ? 0 : r1
 end
-

@@ -1,6 +1,14 @@
 #
-# CHMM generation and stuff...
+# generation and stuff...
 #
+
+export
+    Chmm,
+    chmm_from_data,
+    rand_chmm,
+    simulate_model,
+    rand_trajs,
+    model_ll
 
 struct Chmm
     K::Int # number states
@@ -12,6 +20,8 @@ struct Chmm
 end
 
 """
+    chmm_from_data(X::Matrix{<:Real}, K::Int; maxiter::Int=50, display::Symbol=:none)
+
 initial EM estimates (just does k-means)
 X is D×T, where D is data dimension
 """
@@ -31,6 +41,9 @@ function chmm_from_data(X::Matrix{<:Real}, K::Int;
     return Chmm(K, D, p0, P, ms, Ss)
 end
 
+"""
+    rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
+"""
 function rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
     π0 = rand(K)
     π0 ./= sum(π0)
@@ -81,7 +94,7 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
     Z = empty(Int, num_obs)
     trajptr = empty(Int, N_trajs + 1)
     trajptr[1] = 1
-    traj_pairs = Vector{NTuple{2,Int}}(N_pairs)
+    traj_pairs = empty(Int, 4, N_pairs)
 
     idx = 1
     # concatenate all the data into a single stream
@@ -109,7 +122,7 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
         # edge case for last entry
         trajptr[id2 + 1] = end_2 + 1
         # record the pairs
-        traj_pairs[n] = (id1, id2)
+        traj_pairs[:, n] = [start_1, end_1, start_2, end_2]
 
         idx = end_2 + 1
     end
@@ -117,3 +130,58 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
     return (X, Z, trajptr, traj_pairs)
 end
 
+
+"""
+    model_ll(chmm::Chmm, X::Matrix{Float64}, trajptr::Vector{Int}, pairs::Matrix{Int})
+
+Model log-likelihood given data X.
+"""
+function model_ll(chmm::Chmm,
+        X::Matrix{Float64},
+        trajptr::Vector{Int},
+        pairs::Matrix{Int})
+    K = chmm.K
+    KK = K^2
+    num_trajs = length(trajptr) - 1
+    num_pairs = size(pairs, 2)
+
+    log_p0 = log.(vec(outer(chmm.π0)))
+    log_P = log.(make_flat(chmm.P))
+
+    T_max = ( length(trajptr) == 1 ) ? maximum(diff(pairs[1:2, :])) + 1: maximum(diff(trajptr))
+
+    log_b = empty(KK, T_max)
+    log_α = similar(log_b)
+    log_β = similar(log_b)
+    γ = similar(log_b)
+
+    loglike = 0.0
+    normals = gen_normals(chmm)
+
+    #
+    # Single Trajectories
+    #
+    for id in 1:num_trajs # all trajectories
+        Xt = get_trajectory_from_ptr(X, trajptr, id)
+        T = size(Xt, 2)
+
+        data_likelihood!(SingleTrajectory, normals, Xt, log_b)
+        loglike += forward_backward!(chmm, T,
+                log_p0, log_P, log_b, log_α, log_β, γ)
+    end
+
+    #
+    # Pairwise Trajectories
+    #
+    for id in 1:num_pairs
+        X1, X2 = get_pair_from_ptr(X, pairs, id)
+        T = size(X1, 2)
+        @assert T == size(X2, 2)
+
+        data_likelihood!(PairwiseTrajectory, normals, X1, X2, log_b)
+        loglike += forward_backward!(chmm, T,
+                log_p0, log_P, log_b, log_α, log_β, γ)
+    end
+
+    return loglike
+end

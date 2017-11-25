@@ -84,7 +84,7 @@ function outer!(A::AbstractMatrix{<:Real},
 end
 
 # go from dist over P(s₁' | s₁, s₂) to P((s₁', s₂'), (s₁, s₂))
-@inline function make_flat!(P_flat::Matrix{Float64}, P::Array{Float64,3})
+@inline function make_flat!(P_flat::AbstractMatrix{Float64}, P::AbstractArray{Float64,3})
     K = size(P, 1)
     KK = K^2
 
@@ -99,7 +99,7 @@ end
     return P_flat
 end
 
-@inline function make_flat(P::Array{Float64, 3})
+@inline function make_flat(P::AbstractArray{Float64, 3})
     K = size(P, 1)
     KK = K^2
 
@@ -141,10 +141,9 @@ pair_counts(x::AbstractVector{<:Real}, K::Int) = pair_counts!(zeros(K), x, K)
     return y
 end
 
-#
+##########################################################################################
 # USELESS???
-#
-
+##########################################################################################
 
 """
     estimate_outer_single(A)
@@ -173,4 +172,3 @@ Answer is normalized to sum to one
     return _clean_svd(F.U), _clean_svd(F.Vt)
 end
 _clean_svd(A::AbstractArray{<:Real}) =  normalize(abs.(vec(A)), 1)
-
