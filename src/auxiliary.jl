@@ -47,7 +47,7 @@ Blatantly copied from github.com/jwmi/HMM
     if !isfinite(mx)
         return mx
     else
-        return mx + log(sum(exp, X .- mx))
+        return mx + log(sum(x -> exp(x - mx), X))
     end
 end
 
@@ -77,6 +77,30 @@ function outer!(A::AbstractMatrix{<:Real},
     for i in 1:M
         for j in 1:N
             @inbounds A[i, j] = v[i] * w[j]
+        end
+    end
+
+    return A
+end
+
+outer_sum(v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v) = v + w'
+
+"""
+    outer_sum!(A::AbstractVector{<:Real},
+            v::AbstractVector{<:Real},
+            w::AbstractVector{<:Real}=v)
+
+Set `A` to `A = v + w'`
+"""
+function outer_sum!(A::AbstractMatrix{<:Real},
+        v::AbstractVector{<:Real}, w::AbstractVector{<:Real}=v)
+    M = length(v)
+    N = length(w)
+    @assert size(A) == (M, N)
+
+    for i in 1:M
+        for j in 1:N
+            @inbounds A[i, j] = v[i] + w[j]
         end
     end
 

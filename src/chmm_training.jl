@@ -72,6 +72,7 @@ function data_likelihood!(::Type{PairwiseTrajectory},
 
     l1 = empty(K)
     l2 = empty(K)
+    tt = empty(K, K)
 
     for t in 1:T
         o1 = X1[:, t]
@@ -82,7 +83,8 @@ function data_likelihood!(::Type{PairwiseTrajectory},
             l2[k] = logpdf(normals[k], o2)
         end
 
-        log_b[:, t] = vec(l1 .+ l2')
+        outer_sum!(tt, l1, l2)
+        log_b[:, t] = vec(tt)
     end
 end
 
@@ -127,8 +129,7 @@ function forward_backward!(
 
     for t in 2:T
         for j in 1:KK
-            temp[:] = log_α[:, t - 1]
-            temp .+= log_P[j, :]
+            temp .= log_α[:, t - 1] .+ log_P[j, :]
             log_α[j, t] = logsumexp(temp) + log_b[j, t]
         end
     end
@@ -141,9 +142,7 @@ function forward_backward!(
 
     for t in (T - 1):-1:1
         for i in 1:KK
-            temp[:] = log_b[:, t + 1]
-            temp .+= log_P[:, i]
-            temp .+= log_β[:, t + 1]
+            temp .= log_b[:, t + 1] .+ log_P[:, i] .+ log_β[:, t + 1]
             log_β[i, t] = logsumexp(temp)
         end
     end
@@ -152,11 +151,10 @@ function forward_backward!(
     # γ
     #
     for t in 1:T
-        γ[:, t] = log_α[:, t]
-        γ[:, t] .+= log_β[:, t]
+        γ[:, t] = log_α[:, t]  .+ log_β[:, t]
         γ[:, t] .-= logsumexp(γ[:, t])
-        γ[:, t] = exp.(γ[:, t])
     end
+    map!(exp, γ, γ)
 
     return logsumexp(log_α[:, T])
 end
@@ -194,10 +192,7 @@ function _update_suff_stats!(
     #
     temp2 = similar(suff.P_flat)
     for t in 1:(T - 1)
-        temp2[:] = log_P
-        temp2 .+= log_α[:, t]'
-        temp2 .+= log_b[:, t + 1]
-        temp2 .+= log_β[:, t + 1]
+        temp2 .= log_P .+ log_α[:, t]' .+ log_b[:, t + 1] .+ log_β[:, t + 1]
         temp2 .-= logsumexp(temp2)
         suff.P_flat .+= exp.(temp2)
     end
@@ -331,8 +326,8 @@ function update_parameter_estimates!(
     #
     suff.counts_K .+= ϵ
     for k in 1:K
-        curr.μs[k][:] = suff.ms[k] ./ (suff.counts_K[k])
-        curr.Σs[k][:] = suff.Ss[k] ./ (suff.counts_K[k])
+        curr.μs[k] .= suff.ms[k] ./ (suff.counts_K[k])
+        curr.Σs[k] .= suff.Ss[k] ./ (suff.counts_K[k])
         curr.Σs[k] .-= curr.μs[k] * curr.μs[k]'
 
         # enforce symmetry
@@ -434,7 +429,7 @@ function gen_normals(curr::Chmm;
     for i in 1:K
         # gausian is collapsing
         if !isposdef(curr.Σs[i]) || (det(curr.Σs[i]) ≤ collapse_tol)
-            curr.Σs[i][:] = eye(D) * scaling
+            curr.Σs[i] .= eye(D) * scaling
             curr.μs[i] .+= randn(D) * scaling
         end
         normals[i] = MvNormal(curr.μs[i], curr.Σs[i])

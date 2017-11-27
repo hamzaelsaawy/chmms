@@ -12,12 +12,15 @@ DD = 2
 
 model = rand_chmm(KK, DD)
 (X, Z, trajptr_full, pairs_full) = rand_trajs(model, T_range=200:500, N_pairs=5_000)
+# total # trajs*2 = total # pairs
 num_trajs_full = length(trajptr_full) - 1
 num_pairs_full = size(pairs_full, 2)
 
 # cut all the data in half, otherwise P and S refer to the same data
-trajptr = trajptr_full[1:round(Int, num_trajs_full/2)]
-pairs = pairs_full[:, round(Int, num_pairs_full/2)+1:end]
+# by half, num_trajs = num_pairs, so P contains twice as much data...
+# add 1 to traj ptr b/c it needs the end of the last traj
+trajptr = trajptr_full[1:round(Int, num_trajs_full/3)+1]
+pairs = pairs_full[:, round(Int, num_pairs_full/3)+1:end]
 num_trajs = length(trajptr) - 1
 num_pairs = size(pairs, 2)
 
@@ -61,4 +64,3 @@ ll_data[:model] = model_ll_data
 [ll_data[Symbol("train_$i")] = curr_ll_data[i, :] for i in 1:N_trials]
 
 CSV.write("data/ll_$(N_trials)_trials_$(N_sizes)_$(num_obs).csv", ll_data)
-

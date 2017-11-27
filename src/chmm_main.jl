@@ -65,19 +65,21 @@ function simulate_model(model::Chmm, T::Int=500)
     KK = K^2
 
     Z = empty(Int, 2, T)
-    X1 = empty(D, T)
-    X2 = similar(X1)
+    X1 = zeros(D, T)
+    X2 = zeros(X1)
+    r = empty(D)
 
     sqrtm_Σs = map(sqrtm, model.Σs)
-    z = wsample(1:K, model.π0, 2)
+    z1,z2 = wsample(1:K, model.π0, 2)
 
     for t in 1:T
-        z1 = wsample(1:K, model.P[:, z...])
-        z2 = wsample(1:K, model.P[:, reverse(z)...])
+        z1 = wsample(1:K, model.P[:, z1, z2])
+        z2 = wsample(1:K, model.P[:, z2, z1])
 
-        Z[:, t] = [z1, z2]
-        X1[:, t] = sqrtm_Σs[z1] * randn(D) + model.μs[z1]
-        X2[:, t] = sqrtm_Σs[z2] * randn(D) + model.μs[z2]
+        Z[1, t] = z1
+        Z[2, t] = z2
+        X1[:, t] = sqrtm_Σs[z1] * randn!(r) + model.μs[z1]
+        X2[:, t] = sqrtm_Σs[z2] * randn!(r) + model.μs[z2]
     end
 
     return (Z, X1, X2)
@@ -122,7 +124,10 @@ function rand_trajs(model::Chmm; T_range::Range{Int64}=750:1_000, N_pairs::Int=5
         # edge case for last entry
         trajptr[id2 + 1] = end_2 + 1
         # record the pairs
-        traj_pairs[:, n] = [start_1, end_1, start_2, end_2]
+        traj_pairs[1, n] = start_1
+        traj_pairs[2, n] = end_1
+        traj_pairs[3, n] = start_2
+        traj_pairs[4, n] = end_2
 
         idx = end_2 + 1
     end
