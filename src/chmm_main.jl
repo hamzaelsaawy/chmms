@@ -59,7 +59,7 @@ function rand_chmm(K::Int=5, D::Int=3, μ_scale::Real=10, Σ_scale::Real=1)
     return Chmm(K, D, π0, P, μs, Σs)
 end
 
-function simulate_model(model::Chmm, T::Int=500)
+function simulate_model(model::Chmm, T::Int=500, z0::Vector{Int}=Int[])
     D = model.D
     K = model.K
     KK = K^2
@@ -69,8 +69,13 @@ function simulate_model(model::Chmm, T::Int=500)
     X2 = zeros(X1)
     r = empty(D)
 
+    if isempty(z0)
+        z1,z2 = wsample(1:K, model.π0, 2)
+    else
+        z1,z2 = z0
+    end
+
     sqrtm_Σs = map(sqrtm, model.Σs)
-    z1,z2 = wsample(1:K, model.π0, 2)
 
     for t in 1:T
         z1 = wsample(1:K, model.P[:, z1, z2])
@@ -153,7 +158,9 @@ function model_ll(chmm::Chmm,
     log_p0 = log.(vec(outer(chmm.π0)))
     log_P = log.(make_flat(chmm.P))
 
-    T_max = ( length(trajptr) == 1 ) ? maximum(diff(pairs[1:2, :])) + 1: maximum(diff(trajptr))
+    T_max_S = ( length(trajptr) > 1 ) ? maximum(diff(trajptr)) : 0
+    T_max_P = ( size(pairs, 2) > 0) ? maximum(diff(pairs[1:2, :])) + 1 : 0
+    T_max = max(T_max_S, T_max_P)
 
     log_b = empty(KK, T_max)
     log_α = similar(log_b)
